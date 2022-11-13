@@ -1,43 +1,45 @@
 package InClassAssignments.Arrays;
 
-import java.util.Scanner;
+import java.io.*;
+import java.util.Arrays;
 
 public class MaxNumbers {
-    public static void main(String[] args) {
-        Scanner scn = new Scanner(System.in);
-        int T = scn.nextInt();
+    public static void main(String[] args) throws Exception {
+        InputStreamReader fr=new InputStreamReader(System.in);
+        BufferedReader br=new BufferedReader(fr);
+
+
+        int T = Integer.parseInt(br.readLine());
 
         while(T!=0) {
             // should do our work
-            int n = scn.nextInt();
+            int n = Integer.parseInt(br.readLine());
             int[] arr = new int[n];
+
+            String numberString = br.readLine(); //"1 4 2 4 5" == ["1","4","2","4","5"]
+
+            String[] numberArrayString = numberString.split(" "); //["1","4","2","4","5"]
+
             // filling the array
             for(int i=0;i<arr.length;i++) {
-                arr[i] = scn.nextInt();
+                arr[i] = Integer.parseInt(numberArrayString[i]);
             }
+
+
             //  algo to find out 3 max numbers....
-            int[] ansArr = new int[3];
 
-            for(int j=0; j<3;j++) {
-                int maxTillNow = Integer.MIN_VALUE;
-                int indexOfMax = -1;
-                for(int i=0;i<arr.length;i++) {
-                    if(arr[i] > maxTillNow) {
-                        maxTillNow = arr[i];
-                        indexOfMax = i;
-                    }
+            Arrays.sort(arr);
 
-                }
+            int len = arr.length;
 
-                ansArr[j] = maxTillNow;
-                arr[indexOfMax] = Integer.MIN_VALUE;
-            }
-
-            // print ans here
-            for(int i=0;i<ansArr.length ;i++) {
-                System.out.print(ansArr[i] + " ");
-            }
+            System.out.print(
+                    arr[len-1]
+                            + " " + arr[len-2]
+                            + " " + arr[len-3]
+            );
             System.out.println();
+
+
             T--;
         }
     }

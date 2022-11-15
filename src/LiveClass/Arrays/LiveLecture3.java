@@ -68,9 +68,8 @@ public class LiveLecture3 {
 
 
     //   QUESTION:       create an 2d arrays with increasing counting.....
-
     //            1 1 1 1
-//            2 2 2 2
+    //            2 2 2 2
     public static void increasingCountingRowWiseSaame(int[][] arr) {
 
         for (int row = 0; row < arr.length; row++) {

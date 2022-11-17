@@ -33,7 +33,7 @@ public class LiveLecture4 {
 
 //        printDiagonal(array);
 //        boundaryTraversal(arr4);
-        spiralTraversal(arr3);
+        spiralTraversal(array2);
     }
 
     //    print diagonal
@@ -141,10 +141,9 @@ public class LiveLecture4 {
 
         while(colEnd >= colStart && rowEnd >= rowStart) {
 //            top
-
-            for(int i=colStart; i<=colEnd ;i++) {
-                System.out.print(arr[rowStart][i] +" ");
-            }
+                for (int i = colStart; i <= colEnd; i++) {
+                    System.out.print(arr[rowStart][i] + " ");
+                }
             rowStart++;
 
 //            right
@@ -155,16 +154,18 @@ public class LiveLecture4 {
             colEnd--;
 
 //            bottom
-
-            for(int i = colEnd ; i>=colStart ; i--) {
-                System.out.print(arr[rowEnd][i] + " ");
+            if(rowStart <= rowEnd) {
+                for (int i = colEnd; i >= colStart; i--) {
+                    System.out.print(arr[rowEnd][i] + " ");
+                }
             }
             rowEnd--;
 
 //            left
-
-            for(int i = rowEnd ; i>=rowStart ; i--) {
-                System.out.print(arr[i][colStart] + " ");
+            if(colStart <=colEnd) {
+                for (int i = rowEnd; i >= rowStart; i--) {
+                    System.out.print(arr[i][colStart] + " ");
+                }
             }
             colStart++;
         }

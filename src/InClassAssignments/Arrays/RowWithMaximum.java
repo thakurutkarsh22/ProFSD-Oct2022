@@ -35,6 +35,11 @@ public class RowWithMaximum {
                     sumRow = sumRow + arr[row][col];
                 }
             }
+            // improvement
+            if(sumRow==arr.length){
+                winerIndex = row;
+                break;
+            }
             if(sumRow > sum) {
                 sum = sumRow;
                 winerIndex = row;

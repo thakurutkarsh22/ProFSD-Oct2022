@@ -60,12 +60,27 @@ public class LiveLecture1String {
 
 //        String reverseString = reverseString("aeroplanes");
 //        System.out.println(reverseString);
+//
+//        String reverseStringSb = reverseStringStringBuilder("aeroplanes");
+//        System.out.println(reverseStringSb);
 
 //        boolean isPalindromebad = isPalindromeBad("aasdsag");
 //        System.out.println(isPalindromebad);
 
-        boolean isPalindrome = isPalindrome("madam");
-        System.out.println(isPalindrome);
+//        boolean isPalindrome = isPalindrome("madam");
+//        System.out.println(isPalindrome);
+
+//        String printOddCharBad = printOddCharacterBad("aeroplanes");
+//        System.out.println(printOddCharBad); // "eolns"
+//
+//        String printOddChar = printOddCharacter("aeroplanes");
+//        System.out.println(printOddChar); // "eolns"
+
+        String lastWordInAString = lastWordInAString("Hey there samantha!");
+        System.out.println(lastWordInAString);
+
+
+
 
 
 
@@ -153,7 +168,22 @@ public class LiveLecture1String {
     }
 
 //    TC => O(N)
-//    SC => O(N)
+//    SC => O(N^2)
+
+//    reverse string with help of stringBuilder...
+
+    public static String reverseStringStringBuilder(String str) {
+        StringBuilder ansString = new StringBuilder();
+        for(int i = str.length() -1; i >=0 ;i--) {
+            char ch = str.charAt(i);
+            ansString.append(ch);
+        }
+
+        return ansString.toString();
+    }
+
+//    TC => O(n)
+//    Sc => O(n)
 
 
     /*
@@ -204,5 +234,78 @@ public class LiveLecture1String {
 
 //    TC => O(n) but to be precise O(n/2)
 //    SC => O(1)
+
+
+/*
+         Print odd(by index) characters in a string
+         Input: "aeroplanes"
+         Output: "eolns"
+         Explanation: "we are taking char from odd index (1,3,5 ... ).
+ */
+
+    public static String printOddCharacterBad(String str) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < str.length(); i++) {
+            if(i %2 == 1) {
+                sb.append(str.charAt(i));
+            }
+        }
+        return sb.toString();
+    }
+
+//    TC => O(n)
+//    Sc => O(n)
+
+
+    public static String printOddCharacter(String str) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i < str.length(); i = i+2) {
+            sb.append(str.charAt(i));
+        }
+        return sb.toString();
+    }
+
+//    TC => O(n) -> to be precise O(n/2)
+//    SC => O(n) -> to be precise O(n/2)
+
+/*
+        Last word in the string ?
+        Input: "hey there samantha"
+        output: "samantha"
+        Explanation: samantha is the last word in the sentence.
+ */
+
+//    TODO: have a better way will discuss the edge case...
+    public static String lastWordInAString(String str) {
+        String[] arr = str.split(" ");// ["hey", "there", "samantha"]; // O(n)
+        return arr[arr.length-1]; //o(1)
+    }
+
+//    TC => O(n)
+//    Sc => O(n)
+
+/*
+           Find the highest frequency of character in the string.
+           also tell the char
+           Input: "aakash"
+           output: "a"
+           Explanation: we can see a is repeated 3 times which is highest
+           so a is the ans.
+
+           Input: "ramesh"
+           Output: "a"
+           Explanation: every char has freq 1, so we will take the least letter
+           right now in this example this is a.
+
+ */
+
+    public static char highestFrequencyCharInAString(String str) {
+
+
+        return 'a';
+    }
+
+
+
 
 }

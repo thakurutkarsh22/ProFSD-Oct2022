@@ -76,8 +76,11 @@ public class LiveLecture1String {
 //        String printOddChar = printOddCharacter("aeroplanes");
 //        System.out.println(printOddChar); // "eolns"
 
-        String lastWordInAString = lastWordInAString("Hey there samantha!");
-        System.out.println(lastWordInAString);
+//        String lastWordInAString = lastWordInAString("Hey there samantha!");
+//        System.out.println(lastWordInAString);
+
+        char highestFrequencyCharInAString=  highestFrequencyCharInAString("pneumonoultramicroscopicsilicovolcanoconiosis");
+        System.out.println(highestFrequencyCharInAString);
 
 
 
@@ -268,6 +271,8 @@ public class LiveLecture1String {
 //    TC => O(n) -> to be precise O(n/2)
 //    SC => O(n) -> to be precise O(n/2)
 
+
+
 /*
         Last word in the string ?
         Input: "hey there samantha"
@@ -288,6 +293,7 @@ public class LiveLecture1String {
            Find the highest frequency of character in the string.
            also tell the char
            Input: "aakash"
+           Constraints: This program is for the lower case char
            output: "a"
            Explanation: we can see a is repeated 3 times which is highest
            so a is the ans.
@@ -301,9 +307,31 @@ public class LiveLecture1String {
 
     public static char highestFrequencyCharInAString(String str) {
 
+        int[] charMapFreq = new int[26];
 
-        return 'a';
+//        2nd step
+
+        for (int i = 0; i < str.length(); i++) {
+            char ch = str.charAt(i); // 'c'
+            charMapFreq[ch - 'a'] = charMapFreq[ch - 'a'] +  1;
+        }
+
+//        3rd step find highest frq ...
+        int max = Integer.MIN_VALUE;
+        int index = -1;
+//        O(26)
+        for (int i = 0; i < charMapFreq.length; i++) {
+            if(charMapFreq[i] > max) {
+                max = charMapFreq[i];
+                index = i;
+            }
+        }
+        char ans = (char)('a' + index); // this O(1)
+        return ans;
     }
+
+//    TC => O(n)
+//    Sc => O(1) ..
 
 
 

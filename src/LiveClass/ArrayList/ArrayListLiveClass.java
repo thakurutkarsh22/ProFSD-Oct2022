@@ -150,11 +150,9 @@ public class ArrayListLiveClass {
 //    TC = >
 //    SC =>
 
+        public static void methodToDeleteValue(){
+     //---- delete direct to value without providing index
 
-}
-
-            //---- delete direct to value without providing index
-/*
             ArrayList<Integer> al = new ArrayList<>();
             al.add(1);
             al.add(5);
@@ -163,4 +161,10 @@ public class ArrayListLiveClass {
             //if we want to delete 5 then we can do one thing
            //    al.remove(1);  using index
             al.remove(new Integer(5)); // direct to value
-*/
+
+
+        }
+
+}
+
+       

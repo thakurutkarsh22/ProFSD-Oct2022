@@ -148,6 +148,7 @@ public class ArrayListLiveClass {
 
     }
 
+// vishal
     //to get all values in pascal triangle ,
     public static List<List<Integer>> generate(int numRows) {
         List<List<Integer>> ll = new ArrayList<>();

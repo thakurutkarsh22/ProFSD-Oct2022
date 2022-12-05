@@ -20,9 +20,9 @@ public class ArrayListLiveClass {
         al.add(12);
 //
 ////        --------- print an arraylist -----------------
-//        System.out.println(al);
+        System.out.println(al);
 //        ---------- CONTAINS to the if the value is there or not...
-        System.out.println(al.contains(121));
+//        System.out.println(al.contains(121));
 //
 ////         ----------- get the value ----------
 //
@@ -62,7 +62,7 @@ public class ArrayListLiveClass {
 //        System.out.println(al.size());
 
 //        --------------- FREQUENCY OF AN ITEM ----------
-        System.out.println(Collections.frequency(al, 100 ));
+//        System.out.println(Collections.frequency(al, 100 ));
 
 //        ----------------- INPUT ---------------
 
@@ -74,6 +74,10 @@ public class ArrayListLiveClass {
 //        for (int i = 0; i < n; i++) {
 //            al1.add(scn.nextInt());
 //        }
+
+//        [------------------- Find the index ----------------------
+        System.out.println(al.indexOf(12));// 0
+        System.out.println(al.indexOf(999)); // -1
 
 //        ---------- QUESTIONS ---------
 //        int ans = sumOfElements(al1);
@@ -143,7 +147,6 @@ public class ArrayListLiveClass {
 
             n--;
         }
-
         return prevArr;
 
     }

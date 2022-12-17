@@ -13,14 +13,21 @@ public class LiveClass1 {
 //        InsertionSort(arr);
 //        util.printArrayInt(arr, "Sorted Answer");
 
-        BubbleSortIterative(arr);
-
-        util.printArrayInt(arr, "Sorted Answer");
+//        BubbleSortIterative(arr);
+//
+//        util.printArrayInt(arr, "Sorted Answer");
 
 
 
 //        BubbleSortRecursive(arr, arr.length);
 //        util.printArrayInt(arr, "Sorted Answer");
+
+
+//        SelectionSort(arr);
+//        util.printArrayInt(arr, "sorted answer");
+
+        QuickSort(arr);
+        util.printArrayInt(arr, "sorted answer");
     }
 
     public static void InsertionSort(int[] arr) {
@@ -86,7 +93,64 @@ public class LiveClass1 {
     //    TC => O(n^2)
 //    SC => O(1)
 
+    public static void SelectionSort(int[] arr) {
+
+        for (int i = 0; i < arr.length; i++) {
+            int lowest = i;
+
+            for(int j = i + 1; j < arr.length; j++) {
+                if(arr[j] < arr[lowest]) {
+                    lowest = j;
+                }
+            }
+
+//            swap lowest to i
+            int temp =  arr[lowest];
+            arr[lowest] = arr[i];
+            arr[i] = temp;
+        }
+    }
+
+//    TC => O(n^2)
+//    SC=> O(1)
 
 
+    public static void QuickSort(int[] arr) {
+        QuickSortAlgo(arr, 0, arr.length - 1);
+    }
+
+    public static void QuickSortAlgo(int[] arr, int low, int high) {
+
+//        base case
+        if(low > high) {
+            return;
+        }
+
+//        faith and work
+        int partition = partition(arr, low, high); // some work ......
+
+
+        QuickSortAlgo(arr, low, partition -1);
+        QuickSortAlgo(arr, partition + 1, high);
+
+    }
+
+    public static int partition(int[] arr, int low, int high) {
+        int pivot = arr[high];
+        int i = low - 1;
+        for (int j = low; j <= high -1; j++) {
+            if(arr[j] < pivot) {
+                i++;
+                util.swapInArrays(arr, i, j);
+            }
+        }
+        util.swapInArrays(arr, i+1, high);
+        return i+1;
+    }
+
+//    TC => O(nlogn)
+//    SC => O(1)
+
+//    in bad case TC = >O(n^2)....
 
 }

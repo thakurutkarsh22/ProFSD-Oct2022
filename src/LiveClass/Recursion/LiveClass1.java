@@ -20,6 +20,13 @@ public class LiveClass1 {
  //       int fibbonaciAns = fibbonaci(7);
  //       System.out.println(fibbonaciAns);
         System.out.println(powerUpdate(2,10));
+//        int fibbonaciAns = fibbonaci(7);
+//        System.out.println(fibbonaciAns);
+
+        int ans = gcd(45, 45);
+        System.out.println(ans);
+        int ansGcd2 = gcd2(45, 45);
+        System.out.println(ansGcd2);
 
     }
 
@@ -234,6 +241,42 @@ public class LiveClass1 {
         int ans = faith1 + faith2;
 
         return ans;
+    }
+
+//    TC => O(2 ^n )
+
+
+    /*
+           Question: find GCD of numbers
+           Input: 20, 30
+           Output: 10
+           Explanation: 10 is the highest factor which can divide both 20 and 30.
+     */
+
+    public static int gcd(int a, int b) {
+
+        if(b == 0) {
+            return a;
+        } else {
+            int returnVal = gcd(b , Math.abs(a - b));
+            return returnVal;
+        }
+
+    }
+
+    public static int gcd2(int a, int b) {
+            if(a == b) {
+                return a;
+            } else {
+                int returnVal;
+                if(a > b) {
+                    returnVal = gcd2(a -b, b);
+                } else {
+                    returnVal = gcd2(a , b -a);
+                }
+
+                return returnVal;
+            }
     }
 
 

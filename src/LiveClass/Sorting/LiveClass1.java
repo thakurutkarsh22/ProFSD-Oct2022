@@ -1,5 +1,6 @@
 package LiveClass.Sorting;
 
+import LiveClass.Arrays.LiveLecture3;
 import Util.util;
 
 import java.util.Scanner;
@@ -8,7 +9,7 @@ public class LiveClass1 {
     public static void main(String[] args) {
         int[] arr = {1,5,6,90,3,8,2,70,64};
 
-        util.printArrayInt(arr, "Question");
+//        util.printArrayInt(arr, "Question");
 
 //        InsertionSort(arr);
 //        util.printArrayInt(arr, "Sorted Answer");
@@ -26,8 +27,15 @@ public class LiveClass1 {
 //        SelectionSort(arr);
 //        util.printArrayInt(arr, "sorted answer");
 
-        QuickSort(arr);
-        util.printArrayInt(arr, "sorted answer");
+//        QuickSort(arr);
+//        util.printArrayInt(arr, "sorted answer");
+
+
+//        Range is 0 -9
+        int[] arrCountingSort = {4,2,6,2,1,3,7,3,0,7,7,4,5,6,7,3,2,1,7,9,0};
+        util.printArrayInt(arr, "Question");
+        countingSortAnotherMethod(arrCountingSort);
+
     }
 
     public static void InsertionSort(int[] arr) {
@@ -154,8 +162,68 @@ public class LiveClass1 {
 //    in bad case TC = >O(n^2)....
 
 
+    public static void countingSort(int[] arr) {
+
+//        assume the values inside the array to be 0 ,9
+
+        int[] freqArr = new int[10];
+
+        for (int i = 0; i < arr.length; i++) {
+            int item = arr[i];
+            freqArr[item] += 1;
+        }
+
+        int[] ansArr = new int[arr.length];
+        int iter = 0;
+
+        for (int i = 0; i < freqArr.length; i++) {
+            int value = freqArr[i];
+
+            while(value !=0) {
+                ansArr[iter] = i;
+                iter++;
+                value--;
+            }
+        }
+
+        util.printArrayInt(ansArr, "freqArr");
 
 
+    }
+
+//    TC => O(n)
+//    Sc => O(n)
+
+    public static void countingSortAnotherMethod(int[] arr) {
+//        Freq Map
+        int[] freqArr = new int[10];
+
+        for (int i = 0; i < arr.length; i++) {
+            int item = arr[i];
+            freqArr[item] += 1;
+        }
+
+//        prefix Sum
+        int[] prefixSumArr = LiveLecture3.prefixSumArray(freqArr);
+
+
+
+        int[] ansArr = new int[arr.length];
+
+        for (int i = arr.length -1; i >=0 ; i--) {
+            int val = arr[i];
+            int index = prefixSumArr[val]- 1;
+            ansArr[index] = val;
+            prefixSumArr[val]--;
+        }
+
+        util.printArrayInt(ansArr, "prefixSumArr");
+
+
+    }
+
+//    TC =>  O(n)
+//   SC => O(n) to be precise O(range)
 
 
 }

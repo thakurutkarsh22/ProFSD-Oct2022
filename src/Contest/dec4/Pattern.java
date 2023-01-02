@@ -1,45 +1,49 @@
 package Contest.dec4;
 
-<<<<<<<HEAD
-
 import java.util.*;
 
 public class Pattern {
     public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        int n = sc.nextInt();
-        sc.close();
-        Patterns(n);
-    }
+        Scanner scn = new Scanner(System.in);
+        int n = scn.nextInt();
 
-    static void Patterns(int N) {
-        // Enter your code here
-        System.out.println("*");
-        for (int i = 1; i < N - 1; i++) {
-            System.out.print("*");
-            for (int j = 0; j < i; j++) {
-                System.out.print("^");
-            }
-            System.out.print("*");
-            System.out.println();
-        }
-        for (int i = 0; i <= N; i++) {
-            System.out.print("*");
-        }
-
-        // TODO: Do this in ArrayList<ArrayList<String>>
-
-        System.out.println();
-
-        ArrayList<ArrayList<String>> ans = PatternWithArrayList(N);
+        Pattern(n);
+        ArrayList<ArrayList<String>> ans = PatternWithArrayList(n);
         for (int i = 0; i < ans.size(); i++) {
             for (int j = 0; j < ans.get(i).size(); j++) {
                 System.out.print(ans.get(i).get(j));
             }
             System.out.println();
         }
-
     }
+
+    public static void Pattern(int N) {
+        // 1st row
+        System.out.println("*");
+
+        // middle ROw ... . . . .
+
+        for (int i = 1; i < N - 1; i++) {
+            // starting star
+            System.out.print("*");
+
+            // ^ this thing
+            for (int j = 0; j < i; j++) {
+                System.out.print("^");
+            }
+
+            // ending star
+            System.out.print("*");
+            System.out.println();
+        }
+
+        // last row
+        for (int i = 0; i <= N; i++) {
+            System.out.print("*");
+        }
+    }
+
+    // TODO: a new function and send ME PR .......
 
     public static ArrayList<ArrayList<String>> PatternWithArrayList(int N) {
         ArrayList<ArrayList<String>> ans = new ArrayList<>();
@@ -62,42 +66,4 @@ public class Pattern {
         ans.add(new ArrayList<String>(al));
         return ans;
     }
-}=======
-import java.util.Scanner;
-
-public class Pattern {
-    public static void main(String[] args) {
-        Scanner scn = new Scanner(System.in);
-        int n = scn.nextInt();
-
-        Pattern(n);
-    }
-
-    public static void Pattern(int N){
-        // 1st row
-        System.out.println("*");
-
-        // middle ROw ... . . . .
-
-        for(int i = 1; i< N-1; i++) {
-            // starting star
-            System.out.print("*");
-
-            // ^ this thing
-            for(int j = 0; j < i ; j++) {
-                System.out.print("^");
-            }
-
-            // ending star
-            System.out.print("*");
-            System.out.println();
-        }
-
-        // last row
-        for(int i =0; i <= N; i++) {
-            System.out.print("*");
-        }
-    }
-
-    // TODO: a new function and send ME PR .......
-}>>>>>>>5f fc30fbf99cdd25c034aa63c337757a52b460b1
+}

@@ -33,3 +33,29 @@ public class ResultantString {
         return sb.toString();
     }
 }
+// using String Bhuilder
+import java.io.*; // for handling input/output
+import java.util.*; // contains Collections framework
+
+// don't change the name of this class
+// you can add inner classes if needed
+class Main {
+    public static void main (String[] args) {
+    Scanner sc = new Scanner(System.in);
+    int n = sc.nextInt();
+    StringBuilder sb1 = new StringBuilder();
+    StringBuilder sb2 = new StringBuilder();
+    StringBuilder result = new StringBuilder();
+      sb1.append(sc.next());
+      sb2.append(sc.next());
+      for(int i=0; i<n; i++){
+          if(sb1.charAt(i)==sb2.charAt(i)){
+              result.append("0");
+          }else{
+              result.append("1");
+          }
+      }
+      System.out.println(result);
+    }
+}
+

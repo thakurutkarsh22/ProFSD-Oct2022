@@ -1,5 +1,7 @@
 package LiveClass.Bitwise;
 
+import java.util.ArrayList;
+
 public class LiveClass1 {
     public static void main(String[] args) {
 
@@ -27,6 +29,10 @@ public class LiveClass1 {
 
 //        QUESTIONs
 
+//        int EvenOrOddNum = 2;
+//        int EvenOrOddAns = EvenOrOdd(EvenOrOddNum);
+//        System.out.println(EvenOrOddAns);
+
 //        int compulsory4bit1Num = 181;
 //        int compulsory4bit1Numans = compulsory4bit1(compulsory4bit1Num, 3);
 //        System.out.println(compulsory4bit1Numans);
@@ -52,6 +58,10 @@ public class LiveClass1 {
 //        int isPowerOf2Num = -2147483647;
 //        int isPowerOf2NumAns = isPowerOf2(isPowerOf2Num);
 //        System.out.println(isPowerOf2NumAns);
+
+//        int isPowerOf4Num = 16;
+//        boolean isPowerOf4NumAns = isPowerOf4(isPowerOf4Num);
+//        System.out.println(isPowerOf4NumAns);
 //
 //        int OneNonRepeatingNumArr[] = {2,3,5,7,5,7,3, 2, 99} ;
 //        int OneNonRepeatingNumAns = OneNonRepeating(OneNonRepeatingNumArr);
@@ -59,11 +69,31 @@ public class LiveClass1 {
 
 
 //        int TwoNonRepeatingNumArr[] = {32, 56,56,50,50, 24,21,21} ;
-        int TwoNonRepeatingNumArr[] = {89, 56,56,50,50, 24,21,89} ;
-        int TwoNonRepeatingNumAns[] = TwoNonRepeating(TwoNonRepeatingNumArr);
-        System.out.println(TwoNonRepeatingNumAns[0] + " " + TwoNonRepeatingNumAns[1]);
+//        int TwoNonRepeatingNumArr[] = {89, 56,56,50,50, 24,21,89} ;
+//        int TwoNonRepeatingNumAns[] = TwoNonRepeating(TwoNonRepeatingNumArr);
+//        System.out.println(TwoNonRepeatingNumAns[0] + " " + TwoNonRepeatingNumAns[1]);
 
 
+//        int grayCodeNum = 4;
+//        ArrayList<String> grayCodeAns = grayCode(grayCodeNum);
+//        System.out.println(grayCodeAns);
+
+//        int swapOddEvenBitsNum = 81;
+//        int swapOddEvenBitsAns = swapOddEvenBits(swapOddEvenBitsNum);
+//        System.out.println(swapOddEvenBitsAns);
+
+
+    }
+
+    /*
+        Question: Check if num is even or odd
+        Input: 5
+        Output: Odd
+        Hint: Take n-1 and do a & operation if you get 0 then Even..
+     */
+
+    public static int EvenOrOdd(int num) {
+        return (num & num -1);
     }
 
     /*
@@ -171,9 +201,23 @@ public class LiveClass1 {
      */
 
     public static int isPowerOf2(int num) {
+        if(num == 0) {
+            return 1;
+        }
         return (num & num -1 );
     }
     //    TC SC = O(1)
+
+
+    public static boolean isPowerOf4(int num) {
+//        we will check if the num is power of 2 or not
+        boolean conditionForpowerOF2 = (num & num -1 ) == 0;
+
+//        Mask = 01010101010101
+        boolean conditionWithMAsk = (0x55555555 & num) != 0;
+        return (num > 0 && conditionForpowerOF2  && conditionWithMAsk);
+    }
+
 
     /*
          Question: Find out one non-repeating element in repeating array.
@@ -223,7 +267,61 @@ public class LiveClass1 {
         }
         return new int[]{group1, group2};
 
-
     }
+
+
+    /*
+        Question: Gray Code ..... .
+
+     */
+
+    public static ArrayList<String> grayCode(int n) {
+//base case
+        if(n == 1) {
+            ArrayList<String> al = new ArrayList<>();
+            al.add("0");
+            al.add("1");
+            return al;
+        }
+
+//        faith and work
+
+        ArrayList<String> recursiveAns = grayCode(n-1);
+
+        ArrayList<String> result = new ArrayList<>();
+
+//        i want to add 0
+        for (int i = 0; i < recursiveAns.size(); i++) {
+            String item = recursiveAns.get(i);
+            result.add("0" + item);
+        }
+
+//        I want to add 1
+
+        for (int i = recursiveAns.size()-1; i >=0 ; i--) {
+            String item = recursiveAns.get(i);
+            result.add("1" + item);
+        }
+        return result;
+    }
+
+
+    /*
+        Question: Swap even and odd bits
+        Input: 181
+
+     */
+
+    public static int swapOddEvenBits(int num) {
+        int setBitOnEvenPosition = num & 0x55555555;
+        int setBitOnOddPosition = num & 0xAAAAAAAA;
+
+        int leftShiftEvenPosition = setBitOnEvenPosition << 1;
+        int rightShiftOnOddPosition = setBitOnOddPosition >> 1;
+
+        return leftShiftEvenPosition | rightShiftOnOddPosition;
+    }
+
+
 
 }

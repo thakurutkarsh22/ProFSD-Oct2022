@@ -82,6 +82,10 @@ public class LiveClass1 {
 //        int swapOddEvenBitsAns = swapOddEvenBits(swapOddEvenBitsNum);
 //        System.out.println(swapOddEvenBitsAns);
 
+        int[] bitDifferenceOfAllPairsarr = {23, 25, 21};
+        long bitDifferenceOfAllPairsAns = bitDifferenceOfAllPairs(bitDifferenceOfAllPairsarr);
+        System.out.println(bitDifferenceOfAllPairsAns);
+
 
     }
 
@@ -173,7 +177,7 @@ public class LiveClass1 {
         Question: Count the set Bit kernighan algo.
         Input: 2696
         Output: 4
-        Explanation:
+        Explanation: Brian Kernighan's algorithm
         HINT: find rightMostSetBit and subtract that with the original number till you get original no 0
      */
 
@@ -321,6 +325,38 @@ public class LiveClass1 {
 
         return leftShiftEvenPosition | rightShiftOnOddPosition;
     }
+
+
+    /*
+        Question: Sum of bit difference of all pairs
+        Input:
+
+        Explation: TODO:
+     */
+
+    public static long bitDifferenceOfAllPairs(int[] arr) {
+        long result = 0;
+        int MOD = 1000000007;
+
+        for (int i = 0; i < 32; i++) {
+            int countOn = 0;
+            int mask = 1 << i;
+
+            for (int j = 0; j < arr.length; j++) {
+                if((mask & arr[j]) != 0 ) {
+                    countOn++;
+                }
+            }
+
+
+            int countOff = arr.length - countOn;
+            result = (result +  countOn * countOff * 2 ) % MOD;
+
+        }
+        return result;
+    }
+//    TC => O(n*32)
+//    Sc => O(1)
 
 
 

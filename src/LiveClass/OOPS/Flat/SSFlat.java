@@ -14,10 +14,10 @@ public class SSFlat {
 
 
     public SSFlat(int floor, String c, boolean lif, int len, int bre, int a) {
-        this.floors = floor;
-        this.color = c;
-        this.lift = lif;
-        this.length = len;
+        floors = floor;
+        color = c;
+        lift = lif;
+        length = len;
     }
 
 //    default constructor .....

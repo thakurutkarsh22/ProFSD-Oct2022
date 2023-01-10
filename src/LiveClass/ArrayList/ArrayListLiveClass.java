@@ -150,8 +150,43 @@ public class ArrayListLiveClass {
         return prevArr;
 
     }
+
+// vishal
+    //to get all values in pascal triangle ,
+    public static List<List<Integer>> generate(int numRows) {
+        List<List<Integer>> ll = new ArrayList<>();
+        List<Integer> l;
+        for(int i=0; i<numRows; i++){
+            l = new ArrayList<>();
+            for(int j=0; j<=i; j++){
+                if(j==0 || j==i){
+                    l.add(1);
+                }else{
+                    l.add((ll.get(i-1).get(j-1)+ll.get(i-1).get(j)));
+                }
+            }
+            ll.add(l);
+        }
+        return ll;
+    }
 //    TC = >
 //    SC =>
 
+        public static void methodToDeleteValue(){
+     //---- delete direct to value without providing index
+
+            ArrayList<Integer> al = new ArrayList<>();
+            al.add(1);
+            al.add(5);
+            al.add(8);
+
+            //if we want to delete 5 then we can do one thing
+           //    al.remove(1);  using index
+            al.remove(new Integer(5)); // direct to value
+
+
+        }
 
 }
+
+       

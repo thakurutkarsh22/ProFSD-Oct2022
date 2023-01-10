@@ -44,7 +44,7 @@ public class GoldenRule {
                 p1++;
             } else {
 //                case for only arr[p1] > arr[p2]
-                counter += (mid - left + 1) - p1 + left;
+                counter += (mid - left + 1) - p1 + left; // hence , counter += mid-left+1
                 ansArr[iter] = arr[p2];
                 iter++;
                 p2++;

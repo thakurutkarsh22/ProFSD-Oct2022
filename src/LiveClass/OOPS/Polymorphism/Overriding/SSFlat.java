@@ -1,7 +1,8 @@
-package LiveClass.OOPS.Inheritance;
+package LiveClass.OOPS.Polymorphism.Overriding;
+
+import LiveClass.OOPS.Inheritance.GovtFlat;
 
 public class SSFlat extends GovtFlat {
-
     int floors = 1;
     String color = "red";
     boolean lift = false;
@@ -39,6 +40,10 @@ public class SSFlat extends GovtFlat {
 
     public static void abc() {
         System.out.println("print abc");
+    }
+
+    public void canSeeGround() {
+        System.out.println(" I can see ground");
     }
 
 

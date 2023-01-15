@@ -1,6 +1,6 @@
 package LiveClass.OOPS.Inheritance;
 
-public class GovtFlat {
+public class GovtFlat extends Object{
     String isLegal = "Terms and condtition has been changed";
 
     public int money() {
@@ -8,4 +8,5 @@ public class GovtFlat {
         int convinienceCharge = 12;
         return stampFee + convinienceCharge;
     }
+
 }

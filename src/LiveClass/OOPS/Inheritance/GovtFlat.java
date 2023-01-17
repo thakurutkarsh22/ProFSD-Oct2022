@@ -9,4 +9,12 @@ public class GovtFlat extends Object{
         return stampFee + convinienceCharge;
     }
 
+//    public String iamStatic() {
+//        return "I am inside govt flat";
+//    }
+
+    public String dhamal() {
+        return "dhamal";
+    }
+
 }

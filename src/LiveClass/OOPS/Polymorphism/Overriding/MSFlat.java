@@ -1,7 +1,5 @@
 package LiveClass.OOPS.Polymorphism.Overriding;
 
-import LiveClass.OOPS.Inheritance.SSFlat;
-
 public class MSFlat extends SSFlat {
     boolean lift = true;
     int flatId = 302;
@@ -41,6 +39,11 @@ public class MSFlat extends SSFlat {
 
         return moneyFromSingleStory + energyManagement + waterManagement + maintainence;
     }
+
+//    @Override
+//    public String iamStatic() {
+//        return "I am inside MS flat";
+//    }
 
     public void canSeeSky() {
         System.out.println("i can see the sky");

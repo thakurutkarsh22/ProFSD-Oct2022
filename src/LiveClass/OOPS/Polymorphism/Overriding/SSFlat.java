@@ -38,6 +38,10 @@ public class SSFlat extends GovtFlat {
         return helipad + tennisCourt + swimmingPool;
     }
 
+    public  static String iamStatic() {
+        return "I am inside ss flat";
+    }
+
     public static void abc() {
         System.out.println("print abc");
     }

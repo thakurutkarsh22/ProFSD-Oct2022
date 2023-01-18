@@ -1,13 +1,13 @@
-package LiveClass.OOPS.Flat;
+package LiveClass.OOPS.Inheritance;
 
-public class SSFlat {
+public class SSFlat extends GovtFlat {
 
-    int floors;
-    String color;
-    boolean lift;
-    int length;
-    int bredth;
-    int area;
+    int floors = 1;
+    String color = "red";
+    boolean lift = false;
+    int length = 200;
+    int bredth = 300;
+    int area = 200 * 300;
 
 // Paramaterized constructor ...
 
@@ -20,9 +20,13 @@ public class SSFlat {
         length = len;
     }
 
-//    default constructor .....
+    //    default constructor .....
     public  SSFlat() {
 
+    }
+
+    public SSFlat(String color) {
+        this.color = color;
     }
 
     public int money() {
@@ -33,5 +37,10 @@ public class SSFlat {
         return helipad + tennisCourt + swimmingPool;
     }
 
+    public static void abc() {
+        System.out.println("print abc");
+    }
+
 
 }
+

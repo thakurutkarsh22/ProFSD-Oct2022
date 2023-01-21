@@ -1,6 +1,15 @@
 package LiveClass.OOPS.Encapsulation.Bank;
 
 public class BankClass {
+    String defaultBankName = "defaultBankName";
+    public String publicBankName = "publicBankName";
+    private String privateBankName = "privateBankName";
+    protected String protectedBankName = "ProtectedBankName";
+
+    private String password = "1,#&pop/%";
+
+    private int repoRate = 5;
+
 
     public static void main(String[] args) {
         BankClass b = new BankClass();
@@ -16,10 +25,24 @@ public class BankClass {
 
     }
 
-    String defaultBankName = "defaultBankName";
-    public String publicBankName = "publicBankName";
-    private String privateBankName = "privateBankName";
-    protected String protectedBankName = "ProtectedBankName";
+//    Getters .....
+    public String getRepoRate() {
+        return this.repoRate+"";
+    }
+
+
+//    Setterss .....
+
+    public void setRepoRate(int rate) {
+//        if(user == govt || user == rbi) {
+            this.repoRate = rate;
+//        } else {
+//            System.out.println("not authorized");
+//        }
+
+    }
+
+
 
 
     void defaultDisplay() {

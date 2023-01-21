@@ -15,6 +15,14 @@ public class BankSubClass extends BankClass {
         bankSubClass.protectedDisplay();
 //        bankSubClass.privateDisplay();// // we cant access the private Methods  of parent
 
+//        Getter Access
+        System.out.println(bankSubClass.getRepoRate());
+
+//        Setter Access
+        bankSubClass.setRepoRate(1);
+
+        System.out.println(bankSubClass.getRepoRate());
+
     }
 
 }

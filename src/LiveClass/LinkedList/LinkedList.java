@@ -4,9 +4,9 @@ package LiveClass.LinkedList;
 //Add, Get, Delete
 public class LinkedList {
 
-    Node head;
-    Node tail;
-    int size;
+    private Node head;
+    private Node tail;
+    private int size;
 
     private class Node {
         int val;
@@ -26,9 +26,24 @@ public class LinkedList {
 
     }
 
+    public void display() {
+        Node temp = this.head;
+
+        while(temp != null) {
+            System.out.print(temp.val+ " -> ");
+            temp = temp.next;
+        }
+
+        System.out.println("null");
+    }
+
+//    TC => O(n)
+
     public int size() {
         return this.size;
     }
+
+//    TC => O(1)
 
     public int getFirst() throws Exception {
 
@@ -41,12 +56,16 @@ public class LinkedList {
 
     }
 
+//    TC => O(1)
+
     public int getLast() throws Exception {
         if(this.size == 0) {
             throw new Exception("Size of LL is 0 right now");
         }
         return this.tail.val;
     }
+
+    //    TC => O(1)
 
     public int getAt(int index) throws Exception {
         if(this.size == 0) {
@@ -68,6 +87,8 @@ public class LinkedList {
 
     }
 
+//    TC => O(n)
+
     public Node getNodeAt(int index) throws Exception {
         if(this.size == 0) {
             throw new Exception("Size of LL is 0 right now");
@@ -87,6 +108,8 @@ public class LinkedList {
         return temp;
 
     }
+
+    //    TC => O(n)
 
 
     public void addLast(int data) {
@@ -114,6 +137,8 @@ public class LinkedList {
         }
     }
 
+//    TC => O(1)
+
     public void addFirst(int data) {
         //        Create the node and fill the data
         Node newNode = new Node(data);
@@ -131,6 +156,8 @@ public class LinkedList {
         }
     }
 
+    //    TC => O(1)
+
     public void addAt(int index, int data) throws Exception {
 
         if(index == 0) {
@@ -143,7 +170,7 @@ public class LinkedList {
         }
 
         if(index < 0 || index >= this.size ) {
-            throw new Exception("Index out of bound" + "Index: "
+            throw new Exception("Index out of bound (m)" + "Index: "
                     + index + " , Size: " + this.size);
         }
 
@@ -165,6 +192,8 @@ public class LinkedList {
 
     }
 
+//    TC => O(n)
+
 
     public int removeFirst() throws Exception {
         if(this.size == 0) {
@@ -185,6 +214,7 @@ public class LinkedList {
         return  removedValue;
 
     }
+//    TC => O(1)
 
 
     public int removeLast() throws Exception {
@@ -208,7 +238,9 @@ public class LinkedList {
 
     }
 
-    public int deleteAt(int index) throws  Exception {
+    //    TC => O(n)
+
+    public int removeAt(int index) throws  Exception {
         if(this.size == 0) {
             throw new Exception("List is empty");
         }
@@ -237,5 +269,76 @@ public class LinkedList {
 
         return removedValue;
     }
+
+    //    TC => O(n)
+
+
+
+    /*
+        Question: Reverse the Linked List (Data Index Method)
+        Input: 1 -> 3 -> 6 -> 18 -> 20
+        Output: 20 18 6 3 1
+        Explanation: hey last tail should be the first and the head should be at the tail.
+     */
+
+    public void reverseLinkedListDataIndex() throws Exception {
+        int left = 0;
+        int right = this.size() - 1;
+
+        while(left < right) {
+            Node leftNode = this.getNodeAt(left);
+            Node rightNode = this.getNodeAt(right);
+
+            int temp = rightNode.val;
+            rightNode.val = leftNode.val;
+            leftNode.val = temp;
+
+
+            left++;
+            right--;
+        }
+    }
+
+//    TC => O(n^2)
+//    SC => O(1)
+
+
+    /*
+        Question: Reverse the Linked List (Pointer Index Method)
+        Input: 1 -> 3 -> 6 -> 18 -> 20
+        Output: 20 18 6 3 1
+        Explanation: hey last tail should be the first and the head should be at the tail.
+
+     */
+
+    public void reverseLinkedListPointerIndex() {
+        Node previousNode = this.head;
+        Node currentNode = this.head.next;
+        Node nextNode;
+
+        while (currentNode != null) {
+//            we have address of the chain that is going to be detached
+            nextNode = currentNode.next;
+
+//            detach the chain
+            currentNode.next = previousNode;
+
+//            Move the pointers
+            previousNode = currentNode;
+            currentNode = nextNode;
+
+        }
+
+//        make the head next null;
+        this.head.next = null;
+
+//        change the summary
+        Node temp = this.head;
+        this.head = this.tail;
+        this.tail = temp;
+    }
+
+//    TC => O(n)
+//    SC => O(1)
 
 }

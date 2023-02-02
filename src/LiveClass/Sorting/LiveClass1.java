@@ -32,9 +32,14 @@ public class LiveClass1 {
 
 
 //        Range is 0 -9
-        int[] arrCountingSort = {4,2,6,2,1,3,7,3,0,7,7,4,5,6,7,3,2,1,7,9,0};
-        util.printArrayInt(arr, "Question");
-        countingSortAnotherMethod(arrCountingSort);
+//        int[] arrCountingSort = {4,2,6,2,1,3,7,3,0,7,7,4,5,6,7,3,2,1,7,9,0};
+//        util.printArrayInt(arr, "Question");
+//        countingSortAnotherMethod(arrCountingSort);
+
+
+//        Segregate 0 and 1
+        int[] segregateAns = segrate(new int[]{0,1,0,1,1,1,0,0,1,0,0,1,1,1,1});
+        util.printArrayInt(segregateAns, "Segregate ans");
 
     }
 
@@ -224,6 +229,37 @@ public class LiveClass1 {
 
 //    TC =>  O(n)
 //   SC => O(n) to be precise O(range)
+
+
+    /*
+        Question: segregate 0 and 1.
+
+     */
+
+    public static int[] segrate(int[] arr) {
+        int zeroBoundary = 0;
+        int oneBoundary = arr.length -1;
+
+        while(zeroBoundary < oneBoundary) {
+
+            while(zeroBoundary < arr.length && arr[zeroBoundary] == 0) {
+                zeroBoundary++;
+            }
+
+            while(oneBoundary >= 0 && arr[oneBoundary] == 1) {
+                oneBoundary--;
+            }
+
+            if(zeroBoundary < oneBoundary) {
+                arr[zeroBoundary] = 0;
+                arr[oneBoundary] = 1;
+                zeroBoundary++;
+                oneBoundary--;
+            }
+        }
+
+        return arr;
+    }
 
 
 }

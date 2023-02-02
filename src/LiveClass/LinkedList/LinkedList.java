@@ -8,7 +8,7 @@ public class LinkedList {
     private Node tail;
     private int size;
 
-    private class Node {
+    public class Node {
         int val;
         Node next;
 
@@ -340,5 +340,153 @@ public class LinkedList {
 
 //    TC => O(n)
 //    SC => O(1)
+
+
+
+    /*
+        Question: Middle of the linkedList
+        Input: 1 -> 2 -> 3 -> 4 -> 5
+        Output: 3
+     */
+
+    public int middleNode() {
+        Node fastPointer = this.head;
+        Node slowPointer = this.head;
+
+        while(fastPointer != null && fastPointer.next != null) {
+            fastPointer = fastPointer.next.next;
+            slowPointer = slowPointer.next;
+        }
+
+        return slowPointer.val;
+    }
+
+//    TC => O(n)
+//    SC => O(1)
+
+    /*
+        Question: nth element from the last of the linkedlist
+        Input: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> null || n = 3
+        Output: 6
+     */
+
+    public int nthElementFromLast(int n) {
+        Node aheadPointer = this.head;
+        Node slowPointer = this.head;
+
+        while(n != 0) {
+            aheadPointer = aheadPointer.next;
+            n--;
+        }
+
+        while(aheadPointer != null) {
+            aheadPointer = aheadPointer.next;
+            slowPointer = slowPointer.next;
+        }
+
+        return slowPointer.val;
+    }
+
+
+    public Node nthNodeFromLast(int n) {
+        Node aheadPointer = this.head;
+        Node slowPointer = this.head;
+
+        while(n != 0) {
+            aheadPointer = aheadPointer.next;
+            n--;
+        }
+
+        while(aheadPointer != null) {
+            aheadPointer = aheadPointer.next;
+            slowPointer = slowPointer.next;
+        }
+
+        return slowPointer;
+    }
+
+    /*
+        Question: DELETE nth element from the last of the linkedlist
+        Input: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> null || n = 3
+        Output: 1 -> 2 -> 3 -> 4 -> 5 -> 7 -> 8 -> null
+     */
+
+    public void deletenthElementFromLast(int n) {
+        Node nplusonethNodeFromLast = nthNodeFromLast(n+1);
+        Node nodeToBeDeleteted = nplusonethNodeFromLast.next;
+        Node nodeToBeAttachedTo = nodeToBeDeleteted.next;
+
+        nplusonethNodeFromLast.next = nodeToBeAttachedTo;
+    }
+
+    /*
+        Question: Find out if the LinkedList contains loop
+        Input: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 4
+        Output: True
+     */
+
+    public boolean isCyclic() {
+        Node dummyNode= new Node();
+        dummyNode.next = this.head;
+
+        Node fastPointer = dummyNode;
+        Node slowPointer = dummyNode;
+
+        while(fastPointer != null && fastPointer.next != null) {
+            slowPointer = slowPointer.next;
+            fastPointer = fastPointer.next.next;
+
+            if(fastPointer == slowPointer) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+        /*
+        Question: Find out the Node of stating of LinkedList if it contains loop
+        Input: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 4
+        Output: 4
+     */
+
+    public Node startingNodeOfCycle() {
+
+        Node fastPointer = this.head;
+        Node slowPointer = this.head;
+
+        boolean isCyclic = false;
+
+        while(fastPointer != null && fastPointer.next != null) {
+
+            if(fastPointer == null || fastPointer.next == null) {
+                return null;
+            }
+
+            slowPointer = slowPointer.next;
+            fastPointer = fastPointer.next.next;
+
+            if(fastPointer == slowPointer) {
+                isCyclic = true;
+                break;
+            }
+        }
+
+        if(isCyclic == false) return null;
+
+//        I have determined withh 100% suerity that LL have the loop
+
+        Node dummy = this.head;
+
+        while(dummy != slowPointer) {
+            dummy = dummy.next;
+            slowPointer = slowPointer.next;
+        }
+
+        return slowPointer;
+
+    }
+
+
 
 }

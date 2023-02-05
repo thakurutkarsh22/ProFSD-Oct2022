@@ -1,9 +1,6 @@
 package LiveClass.HashMap;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class LiveClass1 {
     public static void main(String[] args) {
@@ -59,8 +56,10 @@ public class LiveClass1 {
 
 
 //        ------- QUESTION -----------
-        Frequency(new int[]{1,2,3,5,1,2,5,6,1,1,2});
-
+//        Frequency(new int[]{1,2,3,5,1,2,5,6,1,1,2});
+        int[] countpairSum = new int[]{1,2,3,4,5,6,7,8,9};
+        int countPairSumAns = countPairsOfSumToTarget(countpairSum, 10);
+        System.out.println(countPairSumAns);
     }
 
 
@@ -76,17 +75,94 @@ public class LiveClass1 {
         for (int i = 0; i < arr.length; i++) {
             int key = arr[i];
 
-            if(!map.containsKey(key)) {
-                map.put(key, 1);
-            } else {
-                int oldVal = map.get(key);
-                map.put(key, oldVal + 1);
-            }
+//            if(!map.containsKey(key)) {
+//                map.put(key, 1);
+//            } else {
+//                int oldVal = map.get(key);
+//                map.put(key, oldVal + 1);
+//            }
+
+            map.put(key, map.getOrDefault(key, 0) + 1);
 
         }
 
         System.out.println(map);
     }
+
+        /*
+        Question: Pairs of XOR: Given an array, there are N distinct integers
+            .Find the number of unique pairs on intereger where XOr is equals to given
+            target value.
+
+            Input: arr: [5, 4, 10, 15, 7, 6]; Target = 5
+     */
+
+    public static int countPairsOfXorToTarget(int[] arr, int target) {
+        int count = 0;
+        HashSet set  = new HashSet();
+        for (int i = 0; i < arr.length; i++) {
+            int item = arr[i];
+            int otherNumber = target ^ item;
+
+            if(set.contains(otherNumber)) {
+                count++;
+            }
+            set.add(item);
+        }
+
+        return count;
+    }
+
+
+    /*
+        Question: Find out the pair of Integers equal to the target number.
+        Input: [1,2,3,4,5,6,7,8,9] target: 10
+        Output: 4.
+        Explanation: Pairs: (9,1), (2,8), (7,3), (6,4)
+     */
+
+    public static int countPairsOfSumToTargetBad(int[] arr, int target) {
+        int count = 0;
+        for (int i = 0; i < arr.length; i++) {
+
+            for (int j = i+1; j < arr.length; j++) {
+
+                if(target == arr[i] + arr[j]) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+//    TC => O(n^2)
+//    Sc= > O(1)
+
+    public static int countPairsOfSumToTarget(int[] arr, int target) {
+        int count = 0;
+        HashSet set  = new HashSet();
+        for (int i = 0; i < arr.length; i++) {
+            int item = arr[i];
+            int otherNumber = target - item;
+
+            if(set.contains(otherNumber)) {
+                count++;
+            }
+            set.add(item);
+        }
+
+        return count;
+
+    }
+
+//    TC & Sc = O(n)
+
+
+    /*
+        Question
+     */
+
+
 
 
 

@@ -5,7 +5,8 @@ import java.util.List;
 
 public class Main {
 
-
+//TODO: get the implementation of Hashmap (linkedlist).
+//    TODO: Get to know more about hash function black box.
     public static void main(String[] args) {
         System.out.println(3 ^ 3);
         System.out.println("TESTING");
@@ -26,6 +27,7 @@ public class Main {
 
         String aaaa = "12";
 
+        LinkedList ll = new LinkedList();
         List al = new ArrayList();
 //        al.indexOf()
 //        ArrayList al = new ArrayList();

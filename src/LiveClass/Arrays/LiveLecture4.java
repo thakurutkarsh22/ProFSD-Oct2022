@@ -1,6 +1,8 @@
 package LiveClass.Arrays;
 
 public class LiveLecture4 {
+//    TODO: kadanes
+//
     public static void main(String[] args) {
         int[][] array = {
                 {1,2,3},

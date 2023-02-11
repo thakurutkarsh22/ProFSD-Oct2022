@@ -1,36 +1,44 @@
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class Main {
 
 //TODO: get the implementation of Hashmap (linkedlist).
 //    TODO: Get to know more about hash function black box.
+//    TODO: Ultron Grid (infinite).
     public static void main(String[] args) {
-        System.out.println(3 ^ 3);
-        System.out.println("TESTING");
+        Scanner scan = new Scanner(System.in);
 
-        int a = 2147483647;
-        System.out.println(Integer.MIN_VALUE - 1);
+        String s = scan.nextLine();
 
-        String arr[] = new String[]{"a","c","d","b","k"};
-//        Arrays.sort(arr);
-//        for (int i = 0; i < arr.length; i++) {
-//            System.out.print(arr[i] + " ");
-//        }
-//
-//        System.out.println(arr);
-//        System.out.println(1);
-//        System.out.println("asdasd");
-//        System.out.println(true);
+        findDuplicateCharacter(s);
 
-        String aaaa = "12";
-
-        LinkedList ll = new LinkedList();
-        List al = new ArrayList();
-//        al.indexOf()
-//        ArrayList al = new ArrayList();
     }
 
-}
+    public static void findDuplicateCharacter(String s) {
+
+// your code
+
+        HashMap<Character, Integer> hs = new HashMap<>();
+
+        for (int i = 0; i <s.length(); i++) {
+
+            char ch = s.charAt(i);
+
+            if (hs.containsKey(ch)) {
+
+                hs.put(ch, hs.get(ch) + 1);
+
+            } else {
+
+                hs.put(ch, 1);
+            }
+            }
+        for (Map.Entry entry : hs.entrySet()) {
+
+            if ((int) entry.getValue() > 1) {
+                System.out.print(entry.getKey() + " ");
+            }
+        }
+        }
+    }
+

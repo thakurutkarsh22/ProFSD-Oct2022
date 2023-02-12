@@ -53,8 +53,8 @@ public class LiveClass1 {
 //        System.out.println(minimumOperationAns);
 
 
-        System.out.println(InfixToPostFix("a-b/c-d*c"));
-
+//        System.out.println(InfixToPostFix("a-b/c-d*c"));
+        System.out.println(InfixToPreFix("a-b/c-d*c"));
 
     }
 
@@ -236,7 +236,7 @@ public class LiveClass1 {
 
     /*
         Question: Infix To postfix
-        Input: "a-b/c - d*c
+        Input: "a-b/c - d*c"
         Output: abc/-dc*-
      */
 
@@ -271,10 +271,64 @@ public class LiveClass1 {
     public static int getPrecedence(char ch) {
         if(ch == '-' || ch == '+') {
             return 1;
-        } else {
+        } else if(ch == '*' || ch == '/') {
             return 2;
+        } else if(ch == '^') {
+            return 3;
         }
+
+        return 0;
     }
+
+
+    /*
+        Question: Infix to prefix
+        Input: "a-b/c - d*c"
+        Output:
+     */
+
+    public static String InfixToPreFix(String infixStr) {
+
+//        1. reverse the Infix String
+        infixStr =  util.reverseString(infixStr);
+
+//        2. Do Infix to PostFix like handdeling with one rule change
+//        Case1 -> precedenceOfChar <= precedenceOfTopOfTheStack && char = ^ -> then pop
+//        Case2 -> precedenceOfChar < precedenceOfTopOfTheStack && char (-,+,*,/)  -> then pop
+
+
+        StringBuilder sb = new StringBuilder();
+        Stack<Character> stack = new Stack<>();
+
+        for (int i = 0; i < infixStr.length(); i++) {
+            char ch = infixStr.charAt(i);
+            if(ch >= 'a' && ch <= 'z') {
+                sb.append(ch);
+            } else {
+                int precedenceOfChar = getPrecedence(ch);
+//                removing higher precedence from stack || removing the same precedence from stack
+                while(!stack.isEmpty() && (getPrecedence(stack.peek()) >= precedenceOfChar && ch == '^')
+                || !stack.isEmpty() && (getPrecedence(stack.peek()) > precedenceOfChar) ) {
+                    char popChar = stack.pop();
+                    sb.append(popChar);
+                }
+                stack.push(ch);
+            }
+        }
+
+        while (!stack.isEmpty()) {
+            char popChar = stack.pop();
+            sb.append(popChar);
+        }
+
+        return util.reverseString(sb.toString());
+    }
+
+
+
+
+
+
 
 
 

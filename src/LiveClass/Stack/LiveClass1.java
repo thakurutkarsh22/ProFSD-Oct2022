@@ -54,8 +54,9 @@ public class LiveClass1 {
 
 
 //        System.out.println(InfixToPostFix("a-b/c-d*c"));
-        System.out.println(InfixToPreFix("a-b/c-d*c"));
+//        System.out.println(InfixToPreFix("a-b/c-d*c"));
 
+        System.out.println(postfixToInfix("abc/-dc*-"));
     }
 
     /*
@@ -322,6 +323,40 @@ public class LiveClass1 {
         }
 
         return util.reverseString(sb.toString());
+    }
+
+
+    /*
+        Question: Postfix to Infix
+        Input: abc/-dc*-
+        Output: a-b/c-d*c
+     */
+
+    public static String postfixToInfix(String postFixExpression) {
+        Stack<String> stack = new Stack<>();
+
+//        Case1: If you see Operand -> simply push in the stack
+//        Case2: If you see any Operator
+//            -> pop 2 values from the stack
+//            -> Merge popVal2 operator and popVal1 in this sequence.
+//            -> put the above result in the stack
+
+        for (int i = 0; i < postFixExpression.length(); i++) {
+            char ch = postFixExpression.charAt(i);
+            boolean isCharacterOperator = util.isOperator(ch);
+            if(!isCharacterOperator) {
+                stack.push(ch + "");
+            } else {
+                String popVal1 = stack.pop();
+                String popVal2 = stack.pop();
+
+                String mergedEquation = popVal2 + ch + popVal1;
+                stack.push(mergedEquation);
+            }
+        }
+
+        return stack.peek();
+
     }
 
 

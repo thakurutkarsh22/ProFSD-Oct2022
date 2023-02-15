@@ -35,4 +35,11 @@ public class util {
 
         return sb.toString();
     }
+
+    public static boolean isOperator(char ch) {
+        if(ch == '*' || ch == '^' || ch == '+' || ch == '-' || ch == '/') {
+            return true;
+        }
+        return false;
+    }
 }

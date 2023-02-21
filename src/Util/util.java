@@ -26,4 +26,20 @@ public class util {
         arr[a] = arr[b];
         arr[b] = temp;
     }
+
+    public static String reverseString(String str) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = str.length()-1 ; i >=0 ; i--) {
+            sb.append(str.charAt(i));
+        }
+
+        return sb.toString();
+    }
+
+    public static boolean isOperator(char ch) {
+        if(ch == '*' || ch == '^' || ch == '+' || ch == '-' || ch == '/') {
+            return true;
+        }
+        return false;
+    }
 }

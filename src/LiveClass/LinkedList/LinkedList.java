@@ -1,6 +1,8 @@
 package LiveClass.LinkedList;
 
 
+import java.util.ArrayList;
+
 //Add, Get, Delete
 public class LinkedList {
 
@@ -22,7 +24,7 @@ public class LinkedList {
         }
     }
 
-    LinkedList() {
+    public LinkedList() {
 
     }
 
@@ -38,6 +40,42 @@ public class LinkedList {
     }
 
 //    TC => O(n)
+
+    public String displayReverse() {
+        ArrayList list = new ArrayList();
+        Node temp = this.head;
+
+        while(temp != null) {
+            list.add(temp.val);
+            temp = temp.next;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        for (int i = list.size() -1; i >=0 ; i--) {
+            sb.append(list.get(i) + " ");
+        }
+        sb.delete(sb.length()-1, sb.length());
+        sb.append("]");
+
+        return sb.toString().trim();
+//        System.out.println("null");
+
+    }
+
+    public String displayInArr() {
+        Node temp = this.head;
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        while(temp != null) {
+
+            sb.append(temp.val +" ");
+            temp = temp.next;
+        }
+        sb.append("]");
+
+        return sb.toString();
+    }
 
     public int size() {
         return this.size;

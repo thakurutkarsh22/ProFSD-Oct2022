@@ -63,6 +63,20 @@ public class LinkedList {
 
     }
 
+    public String displayInArr() {
+        Node temp = this.head;
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        while(temp != null) {
+
+            sb.append(temp.val +" ");
+            temp = temp.next;
+        }
+        sb.append("]");
+
+        return sb.toString();
+    }
+
     public int size() {
         return this.size;
     }

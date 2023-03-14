@@ -1,25 +1,28 @@
-package Contest.nov20;
+package Contest.jan22_ModuleContest;
 
-import java.util.Scanner;
+import java.util.*;
 
-public class HappyBalloons {
+public class CandyShopping {
     public static void main(String[] args) {
         // Your code here
         Scanner sc = new Scanner(System.in);
         int n = sc.nextInt();
+        long m = sc.nextLong();
         int[] arr = new int[n];
         for (int i = 0; i < n; i++) {
             arr[i] = sc.nextInt();
         }
-        sc.close();
+        Arrays.sort(arr);
         int cnt = 0;
         for (int i = 0; i < n; i++) {
-            // index starts with 0, so alternating given conditions
-            if (((i % 2) == 0) && ((arr[i]) % 2 != 0))
+            if (m - arr[i] >= 0) {
+                m -= arr[i];
                 cnt++;
-            else if (((i % 2) != 0) && ((arr[i]) % 2 == 0))
-                cnt++;
+            } else {
+                break;
+            }
         }
         System.out.print(cnt);
+        sc.close();
     }
 }

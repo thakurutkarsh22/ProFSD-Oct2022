@@ -1,8 +1,8 @@
-package Contest.nov20;
+package Contest.jan22_ModuleContest;
 
 import java.util.Scanner;
 
-public class HappyBalloons {
+public class MovingRight {
     public static void main(String[] args) {
         // Your code here
         Scanner sc = new Scanner(System.in);
@@ -11,15 +11,17 @@ public class HappyBalloons {
         for (int i = 0; i < n; i++) {
             arr[i] = sc.nextInt();
         }
-        sc.close();
         int cnt = 0;
-        for (int i = 0; i < n; i++) {
-            // index starts with 0, so alternating given conditions
-            if (((i % 2) == 0) && ((arr[i]) % 2 != 0))
+        int max = 0;
+        for (int i = 1; i < n; i++) {
+            if (arr[i - 1] >= arr[i]) {
                 cnt++;
-            else if (((i % 2) != 0) && ((arr[i]) % 2 == 0))
-                cnt++;
+                max = Math.max(cnt, max);
+            } else {
+                cnt = 0;
+            }
         }
-        System.out.print(cnt);
+        System.out.print(max);
+        sc.close();
     }
 }

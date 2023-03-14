@@ -6,8 +6,8 @@ public class Pattern {
     public static void main(String[] args) {
         Scanner scn = new Scanner(System.in);
         int n = scn.nextInt();
-
-        Pattern(n);
+        scn.close();
+        pattern(n);
         ArrayList<ArrayList<String>> ans = PatternWithArrayList(n);
         for (int i = 0; i < ans.size(); i++) {
             for (int j = 0; j < ans.get(i).size(); j++) {
@@ -17,7 +17,7 @@ public class Pattern {
         }
     }
 
-    public static void Pattern(int N) {
+    public static void pattern(int N) {
         // 1st row
         System.out.println("*");
 

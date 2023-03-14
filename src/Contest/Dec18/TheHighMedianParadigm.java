@@ -16,5 +16,6 @@ public class TheHighMedianParadigm {
             int median = m / (n - med);
             System.out.print((int) median);
         }
+        sc.close();
     }
 }

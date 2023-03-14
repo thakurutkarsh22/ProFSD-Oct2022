@@ -1,7 +1,5 @@
 package Contest.nov13;
 
-import javax.sound.midi.Soundbank;
-
 public class KOperations {
     public static void main(String[] args) {
         long ans = kOperations(3, 5);

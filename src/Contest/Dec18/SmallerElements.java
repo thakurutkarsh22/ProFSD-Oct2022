@@ -11,7 +11,7 @@ public class SmallerElements {
             arr[i] = sc.nextInt();
         }
         int q = sc.nextInt();
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < q; i++) {
             int k = sc.nextInt();
             int ans = smallerElements(arr, n, k);
             System.out.println(ans);

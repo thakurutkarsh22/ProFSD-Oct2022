@@ -1,5 +1,6 @@
 package LLD.LldQuestions.Splitwise2.Service;
 
+import LLD.LldQuestions.Splitwise2.Exceptions.ExpenseNotFound;
 import LLD.LldQuestions.Splitwise2.Repository.ExpenseRepository;
 import LLD.LldQuestions.Splitwise2.Repository.UserRepository;
 import LLD.LldQuestions.Splitwise2.Stratergy.ExpenseStratergy.Expense;
@@ -32,7 +33,8 @@ public class SplitwiseService {
         return this.userRepository.getBalanceSheet();
     }
 
-    public void addExpense(ExpenseType expenseType, double amount, String paidBy, List<SplitStratergy> splits, ExpenseMetaData expenseMetadata) {
+    public void addExpense(ExpenseType expenseType, double amount, String paidBy,
+                           List<SplitStratergy> splits, ExpenseMetaData expenseMetadata) throws ExpenseNotFound {
         Expense expense = ExpenseService.CreateExpense(expenseType, amount, getUserMap().get(paidBy), splits, expenseMetadata);
         this.expenseRepository.addExpense(expense);
 

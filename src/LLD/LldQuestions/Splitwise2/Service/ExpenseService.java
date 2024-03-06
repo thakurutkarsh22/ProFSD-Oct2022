@@ -1,5 +1,6 @@
 package LLD.LldQuestions.Splitwise2.Service;
 
+import LLD.LldQuestions.Splitwise2.Exceptions.ExpenseNotFound;
 import LLD.LldQuestions.Splitwise2.Stratergy.ExpenseStratergy.EqualExpenseStratergy;
 import LLD.LldQuestions.Splitwise2.Stratergy.ExpenseStratergy.ExactExpenseStratergy;
 import LLD.LldQuestions.Splitwise2.Stratergy.ExpenseStratergy.Expense;
@@ -14,7 +15,7 @@ import java.util.List;
 
 public class ExpenseService {
     public  static Expense CreateExpense(ExpenseType expenseType, double amount, User paidBy,
-                                         List<SplitStratergy> splits, ExpenseMetaData metaData) {
+                                         List<SplitStratergy> splits, ExpenseMetaData metaData) throws ExpenseNotFound {
 
         switch (expenseType) {
             case EXACT:
@@ -38,7 +39,7 @@ public class ExpenseService {
                 return new PercentageExpenseStratergy(amount, paidBy, splits, metaData);
 
             default:
-                return null;
+                throw  new ExpenseNotFound("Expense Not Found");
         }
 
     }

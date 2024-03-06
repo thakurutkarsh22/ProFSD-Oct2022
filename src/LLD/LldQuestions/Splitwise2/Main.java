@@ -1,6 +1,8 @@
 package LLD.LldQuestions.Splitwise2;
 
-import LLD.LldQuestions.Splitwise2.Service.ExpenseManager;
+import LLD.LldQuestions.Splitwise2.Repository.ExpenseRepository;
+import LLD.LldQuestions.Splitwise2.Repository.UserRepository;
+import LLD.LldQuestions.Splitwise2.Service.SplitwiseService;
 import LLD.LldQuestions.Splitwise2.Stratergy.SplitStratergy.EqualSplitStratergy;
 import LLD.LldQuestions.Splitwise2.Stratergy.SplitStratergy.ExactSplitStratergy;
 import LLD.LldQuestions.Splitwise2.Stratergy.SplitStratergy.PercentageSplitStratergy;
@@ -13,12 +15,14 @@ import java.util.*;
 public class Main {
 
     public static void main(String[] args) {
-        ExpenseManager expenseManager = new ExpenseManager();
+        SplitwiseService splitwiseService = new SplitwiseService(
+                new UserRepository(), new ExpenseRepository()
+        );
 
-        expenseManager.addUser(new User("u1", "User1", "gaurav@workat.tech", "9876543210"));
-        expenseManager.addUser(new User("u2", "User2", "sagar@workat.tech", "9876543210"));
-        expenseManager.addUser(new User("u3", "User3", "hi@workat.tech", "9876543210"));
-        expenseManager.addUser(new User("u4", "User4", "mock-interviews@workat.tech", "9876543210"));
+        splitwiseService.addUser(new User("u1", "User1", "gaurav@workat.tech", "9876543210"));
+        splitwiseService.addUser(new User("u2", "User2", "sagar@workat.tech", "9876543210"));
+        splitwiseService.addUser(new User("u3", "User3", "hi@workat.tech", "9876543210"));
+        splitwiseService.addUser(new User("u4", "User4", "mock-interviews@workat.tech", "9876543210"));
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -29,9 +33,9 @@ public class Main {
             switch (commandType) {
                 case "SHOW":
                     if (commands.length == 1) {
-                        expenseManager.showBalances();
+                        splitwiseService.showBalance();
                     } else {
-                        expenseManager.showBalance(commands[1]);
+                        splitwiseService.showBalance(commands[1]);
                     }
                     break;
                 case "EXPENSE":
@@ -43,21 +47,21 @@ public class Main {
                     switch (expenseType) {
                         case "EQUAL":
                             for (int i = 0; i < noOfUsers; i++) {
-                                splits.add(new EqualSplitStratergy(expenseManager.userMap.get(commands[4 + i])));
+                                splits.add(new EqualSplitStratergy(splitwiseService.getUserMap().get(commands[4 + i])));
                             }
-                            expenseManager.addExpense(ExpenseType.EQUAL, amount, paidBy, splits, null);
+                            splitwiseService.addExpense(ExpenseType.EQUAL, amount, paidBy, splits, null);
                             break;
                         case "EXACT":
                             for (int i = 0; i < noOfUsers; i++) {
-                                splits.add(new ExactSplitStratergy(expenseManager.userMap.get(commands[4 + i]), Double.parseDouble(commands[5 + noOfUsers + i])));
+                                splits.add(new ExactSplitStratergy(splitwiseService.getUserMap().get(commands[4 + i]), Double.parseDouble(commands[5 + noOfUsers + i])));
                             }
-                            expenseManager.addExpense(ExpenseType.EXACT, amount, paidBy, splits, null);
+                            splitwiseService.addExpense(ExpenseType.EXACT, amount, paidBy, splits, null);
                             break;
                         case "PERCENT":
                             for (int i = 0; i < noOfUsers; i++) {
-                                splits.add(new PercentageSplitStratergy(expenseManager.userMap.get(commands[4 + i]), Double.parseDouble(commands[5 + noOfUsers + i])));
+                                splits.add(new PercentageSplitStratergy(splitwiseService.getUserMap().get(commands[4 + i]), Double.parseDouble(commands[5 + noOfUsers + i])));
                             }
-                            expenseManager.addExpense(ExpenseType.PERCENT, amount, paidBy, splits, null);
+                            splitwiseService.addExpense(ExpenseType.PERCENT, amount, paidBy, splits, null);
                             break;
                     }
                     break;

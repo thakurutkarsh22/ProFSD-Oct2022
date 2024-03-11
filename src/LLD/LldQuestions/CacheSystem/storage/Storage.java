@@ -4,7 +4,7 @@ import LLD.LldQuestions.CacheSystem.exceptions.KeyNotFoundException;
 import LLD.LldQuestions.CacheSystem.exceptions.StorageFullException;
 
 public interface Storage<Key, Value> {
-//    This is for if you want
+//    This is for if you want to store cache in hashmap or any other data structure.
 
     public void add(Key key, Value value) throws StorageFullException;
     public void remove(Key key) throws KeyNotFoundException;

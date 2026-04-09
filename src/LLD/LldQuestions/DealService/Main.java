@@ -6,7 +6,7 @@ import LLD.LldQuestions.DealService.model.UserDealMap;
 import LLD.LldQuestions.DealService.repository.DealRepository;
 import LLD.LldQuestions.DealService.repository.UserDealMapRepository;
 import LLD.LldQuestions.DealService.service.DealService;
-import LLD.LldQuestions.Splitwise.Singleton.User;
+//import LLD.LldQuestions.Splitwise.Singleton.User;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -23,8 +23,8 @@ public class Main {
 
 //    create users
 
-            User utkarsh = new User("1", "utkasrh");
-            User anuj = new User("2", "anuj");
+//            User utkarsh = new User("1", "utkasrh");
+//            User anuj = new User("2", "anuj");
 
 //    create deals
 //            Deal deal1 = new Deal("1", formatter.parse("10-03-2024 10:00:00 AM"),

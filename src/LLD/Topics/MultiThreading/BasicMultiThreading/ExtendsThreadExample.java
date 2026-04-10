@@ -8,6 +8,14 @@ public class ExtendsThreadExample {
         one.start();
         two.start();
         System.out.println("Done executing the threads!");
+//        System.out.println(Thread.());
+
+        for (int i = 0; i < 1000; i++) {
+            if(i == 999) {
+                System.out.println("999");
+            }
+
+        }
     }
 }
 

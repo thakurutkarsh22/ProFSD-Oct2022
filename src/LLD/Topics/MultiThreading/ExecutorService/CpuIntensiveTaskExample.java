@@ -5,34 +5,78 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /*
- * Ideal pool size for CPU-bound work (course: "What's the ideal pool size?")
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                  CPU-Intensive Task (Ideal Pool Size)                  ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * For tasks that mostly use the CPU (compute) with little blocking I/O, using about as many
- * threads as hardware threads (cores / availableProcessors()) avoids pointless oversubscription:
- * too many runnable CPU-bound threads → more context switching and cache thrashing with little
- * extra throughput.
+ * ============================================================================
+ * 1. What is the ideal pool size for CPU-bound work?
+ * ============================================================================
  *
- * This is a rule of thumb, not a law: hyper-threading, mixed workloads, GC, and blocking calls
- * change the answer. For I/O-heavy work you often want more threads; for Java 21+ virtual threads
- * are another model for massive concurrency without mapping 1:1 to OS threads.
+ * For pure CPU-bound tasks (no I/O, no waiting), the ideal thread pool size
+ * is approximately equal to the number of available CPU cores:
  *
- * Video snippet: fixed pool of size availableProcessors(), submit many CpuTask runnables.
- * shutdown + awaitTermination added so main exits cleanly (course code often omits this).
+ *   int cores = Runtime.getRuntime().availableProcessors();
+ *   ExecutorService pool = Executors.newFixedThreadPool(cores);
+ *
+ * ============================================================================
+ * 2. Why? -- diagram
+ * ============================================================================
+ *
+ *   Available cores: 4
+ *
+ *   Pool size = 4 (optimal):
+ *   ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
+ *   │ Core 0 │  │ Core 1 │  │ Core 2 │  │ Core 3 │
+ *   │ Task A │  │ Task B │  │ Task C │  │ Task D │
+ *   └────────┘  └────────┘  └────────┘  └────────┘
+ *   100% CPU utilization, minimal context switching
+ *
+ *   Pool size = 8 (too many):
+ *   ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
+ *   │ Core 0 │  │ Core 1 │  │ Core 2 │  │ Core 3 │
+ *   │ T-A/T-E│  │ T-B/T-F│  │ T-C/T-G│  │ T-D/T-H│
+ *   │ switch!│  │ switch!│  │ switch!│  │ switch!│
+ *   └────────┘  └────────┘  └────────┘  └────────┘
+ *   Same CPU, but now wasting time on context switches
+ *
+ *   Pool size = 1 (too few):
+ *   ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
+ *   │ Core 0 │  │ Core 1 │  │ Core 2 │  │ Core 3 │
+ *   │ Task A │  │ IDLE   │  │ IDLE   │  │ IDLE   │
+ *   └────────┘  └────────┘  └────────┘  └────────┘
+ *   75% of CPUs wasted
+ *
+ *   Rule of thumb:
+ *   ┌────────────────────────────────────────────────┐
+ *   │  CPU-bound tasks:  threads = cores              │
+ *   │  I/O-bound tasks:  threads = cores * (1 + W/C)  │
+ *   │    where W = wait time, C = compute time        │
+ *   └────────────────────────────────────────────────┘
+ *
+ * ============================================================================
+ * 3. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Image processing: resize N images in parallel, one per core.
+ * - Scientific computation: matrix multiplication, simulations.
+ * - Data compression: parallel compression of file chunks.
+ * - Cryptographic hashing: hash passwords using all available cores.
+ *
+ * ============================================================================
+ * 4. Code demo below
+ * ============================================================================
  */
 public class CpuIntensiveTaskExample {
 
     public static void main(String[] args) throws InterruptedException {
-        // Get the number of available CPU cores
         int cores = Runtime.getRuntime().availableProcessors();
 
-        // Create a fixed thread pool with a size equal to the number of cores.
-        // For CPU-intensive tasks, the ideal pool size is typically the number of available cores.
         ExecutorService service = Executors.newFixedThreadPool(cores);
 
         System.out.println("Created thread pool with : " + cores + " cores");
 
         try {
-            // Submit 20 tasks to the executor service
             for (int i = 0; i < 20; i++) {
                 service.execute(new CpuTask());
             }
@@ -47,7 +91,6 @@ class CpuTask implements Runnable {
 
     @Override
     public void run() {
-        // Simulate a CPU-intensive task by printing the current thread's name
         System.out.println("Some CPU intensive task being done by : " + Thread.currentThread().getName());
     }
 }
@@ -60,21 +103,7 @@ class CpuTask implements Runnable {
  * Some CPU intensive task being done by : pool-1-thread-2
  * Some CPU intensive task being done by : pool-1-thread-4
  * Some CPU intensive task being done by : pool-1-thread-5
- * Some CPU intensive task being done by : pool-1-thread-6
- * Some CPU intensive task being done by : pool-1-thread-7
- * Some CPU intensive task being done by : pool-1-thread-8
- * Some CPU intensive task being done by : pool-1-thread-9
- * Some CPU intensive task being done by : pool-1-thread-10
- * Some CPU intensive task being done by : pool-1-thread-11
- * Some CPU intensive task being done by : pool-1-thread-12
- * Some CPU intensive task being done by : pool-1-thread-13
- * Some CPU intensive task being done by : pool-1-thread-14
- * Some CPU intensive task being done by : pool-1-thread-14
- * Some CPU intensive task being done by : pool-1-thread-14
- * Some CPU intensive task being done by : pool-1-thread-14
- * Some CPU intensive task being done by : pool-1-thread-14
- * Some CPU intensive task being done by : pool-1-thread-14
- * Some CPU intensive task being done by : pool-1-thread-14
+ * ...
  *
  * Process finished with exit code 0
  */

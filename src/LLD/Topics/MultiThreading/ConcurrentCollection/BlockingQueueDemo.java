@@ -48,6 +48,13 @@ import java.util.concurrent.BlockingQueue;
  * - You could use wait/notify around a LinkedList; BlockingQueue is a higher-level, reviewed
  *   building block used heavily in java.util.concurrent (ExecutorService work queues, etc.).
  *
+ * Practical uses (one-liners)
+ * - ExecutorService work queues: every thread pool internally uses a BlockingQueue.
+ * - Logging frameworks: log events are put() by app threads, take() by a writer thread.
+ * - Rate limiting: bounded queue naturally throttles fast producers (back-pressure).
+ * - Pipeline stages: stage 1 puts results into queue, stage 2 takes and processes.
+ * - Event-driven systems: event bus uses a blocking queue between publishers and subscribers.
+ *
  * Demo below: one producer (20 tasks), two consumers in infinite loops. put() blocks when the
  * queue is full; take() blocks when empty. After the producer stops, consumers still wait on
  * take() — stop the JVM manually or extend with a poison-pill / interrupt shutdown for a clean exit.

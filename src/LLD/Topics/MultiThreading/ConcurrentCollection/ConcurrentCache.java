@@ -221,14 +221,24 @@ import java.util.concurrent.ConcurrentHashMap;
  *   Iterators                fail-fast (CME)                weakly consistent (no CME)
  *
  * ============================================================================
- * 6. Interview one-liner
+ * 6. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - In-memory cache: computeIfAbsent for atomic "get or compute" (e.g., config/metadata cache).
+ * - Concurrent counters: merge() or compute() to safely increment per-key metrics.
+ * - Session store: web servers store user sessions in a ConcurrentHashMap.
+ * - Deduplication: check-and-insert in parallel without external locking.
+ * - Connection registry: track active WebSocket/TCP connections by ID.
+ *
+ * ============================================================================
+ * 7. Interview one-liner
  * ============================================================================
  * ConcurrentHashMap (Java 8+): flat Node[] table, per-bucket synchronized + CAS for empty slots,
  * lock-free volatile reads for get(). Multiple threads can put() in parallel as long as they hit
  * different buckets. get() never blocks.
  *
  * ============================================================================
- * 7. Code demo below
+ * 8. Code demo below
  * ============================================================================
  * This demo matches the course video: 10 threads, each hitting the same key 3 times, showing
  * that the first access triggers compute() and subsequent accesses return the cached value.

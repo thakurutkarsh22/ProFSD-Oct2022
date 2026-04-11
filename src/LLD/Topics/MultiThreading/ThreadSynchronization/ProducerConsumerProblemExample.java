@@ -2,9 +2,65 @@ package LLD.Topics.MultiThreading.ThreadSynchronization;
 
 import java.util.LinkedList;
 
-/**
- * Classic producer–consumer using a bounded buffer, one lock, wait/notify, and pacing via sleep.
- * Matches the threaded course example: capacity {@code top}, empty when size == {@code bottom} (0).
+/*
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                  Producer-Consumer Problem                             ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ *
+ * ============================================================================
+ * 1. What is the producer-consumer problem?
+ * ============================================================================
+ *
+ * A classic concurrency pattern where:
+ * - Producer(s) generate data and put it into a shared bounded buffer.
+ * - Consumer(s) take data from the buffer and process it.
+ * - They must coordinate: producer waits when buffer is FULL,
+ *   consumer waits when buffer is EMPTY.
+ *
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
+ *
+ *   Producer                  Bounded Buffer (capacity=5)              Consumer
+ *   ────────                  ──────────────────────────               ────────
+ *                             ┌───┬───┬───┬───┬───┐
+ *   produce() ──put──►        │ 0 │ 1 │ 2 │ 3 │ 4 │        ◄──take── consume()
+ *                             └───┴───┴───┴───┴───┘
+ *
+ *   Buffer FULL:   producer calls wait()   --> sleeps until consumer takes
+ *   Buffer EMPTY:  consumer calls wait()   --> sleeps until producer puts
+ *   After put/take: thread calls notifyAll() --> wakes the other side
+ *
+ *   Flow (simplified):
+ *
+ *   Producer                                Consumer
+ *   ────────                                ────────
+ *   synchronized(lock)                      (waiting for lock)
+ *   │  buffer full? YES -> wait()
+ *   │  (releases lock, sleeps)
+ *   │                                       synchronized(lock)
+ *   │                                       │  buffer empty? NO
+ *   │                                       │  removeFirst()
+ *   │                                       │  notifyAll() --> wakes producer
+ *   │                                       release lock
+ *   │  (woken up, re-acquires lock)
+ *   │  buffer full? NO
+ *   │  add item
+ *   │  notifyAll() --> wakes consumer
+ *   release lock
+ *
+ * ============================================================================
+ * 3. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Message queues (Kafka, RabbitMQ are distributed versions of this pattern).
+ * - Thread pool work queues (ExecutorService uses a BlockingQueue internally).
+ * - Logging frameworks: log events are produced by app threads, consumed by a writer thread.
+ * - Pipeline processing: stage 1 produces output, stage 2 consumes it.
+ *
+ * ============================================================================
+ * 4. Code demo below
+ * ============================================================================
  */
 public class ProducerConsumerProblemExample {
 
@@ -95,15 +151,5 @@ class Worker {
  * 4 removed from the container
  * Container empty, waiting for items to be added ...
  * 5 Added to the container
- * 6 Added to the container
- * 7 Added to the container
- * 8 Added to the container
- * 9 Added to the container
- * Container full, waiting for items to be removed ...
- * 5 removed from the container
- * 6 removed from the container
- * 7 removed from the container
- * 8 removed from the container
- * 9 removed from the container
- * Container empty, waiting for items to be added ...
+ * ...
  */

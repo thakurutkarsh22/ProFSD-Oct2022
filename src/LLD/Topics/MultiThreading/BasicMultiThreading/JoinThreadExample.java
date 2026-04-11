@@ -1,30 +1,63 @@
 package LLD.Topics.MultiThreading.BasicMultiThreading;
 
 /*
- * What is .join() operation in Java?
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                          Thread.join()                                 ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * Main thread as the parent thread
- * - When we start a program, execution usually begins with main(). That method runs on the main
- *   thread. You can think of it as the parent thread, since it is the one that starts the others.
+ * ============================================================================
+ * 1. What is join()?
+ * ============================================================================
  *
- * Independent execution of threads
- * - When you create and start other threads, they run concurrently with the main thread unless
- *   you say otherwise. By default no thread waits for another; they are independent.
+ * thread.join() makes the CALLING thread wait until the TARGET thread finishes
+ * its run() method. Think of it as: "finish your work first, then I continue."
  *
- * What is join()?
- * - Think of each thread as its own line of execution. When you call .join() on a thread, the
- *   thread that called join() (often main, but it can be any thread that wants to wait) is saying:
- *   finish your work first, then I continue. The caller blocks until that target thread completes.
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
  *
- *   (Rough timeline idea from "Multithreading for Beginners"):
+ *   Main thread           Thread one             Thread two
+ *   ───────────           ──────────             ──────────
+ *   one.start()  ---------> runs                 
+ *   two.start()  --------------------------------> runs
+ *   one.join()            │                       │
+ *     │                   │ printing 0-4          │ printing 0-24
+ *     │ BLOCKED           │                       │
+ *     │ waiting...        │                       │
+ *     │                   ▼ (done)                │ (still running!)
+ *     │ UNBLOCKED                                 │
+ *     ▼                                           │
+ *   prints "Done"                                 │ still going...
+ *                                                 ▼ (finishes later)
  *
- *       (Main)   ---------------------------------------->
- *       (Other)  -------->
- *       (Target) ------------------>
+ *   Key: main only waited for thread ONE. Thread two may still be running
+ *   when "Done" prints, because we never called two.join().
  *
- * Perspective
- * - The name "join" is easy to misread at first. Names like waitForCompletion() or
- *   completeThenContinue() would describe the behavior more literally.
+ * ============================================================================
+ * 3. Timeline
+ * ============================================================================
+ *
+ *   Time    Main             Thread 1          Thread 2
+ *   ─────   ──────────       ──────────        ──────────
+ *   0ms     starts both      printing 0-4      printing 0-24
+ *   0ms     one.join()       │                 │
+ *           BLOCKED          │                 │
+ *   ~Xms   UNBLOCKED        done              still printing
+ *           prints "Done"                      │
+ *   ~Yms   main exits                         finally done
+ *
+ * ============================================================================
+ * 4. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Wait for a background computation to finish before using its result.
+ * - Coordinate startup: main starts worker threads, joins all, then proceeds.
+ * - Simple fork-join: fork N threads, join all, merge results.
+ * - Graceful shutdown: join daemon-like worker threads to ensure cleanup.
+ *
+ * ============================================================================
+ * 5. Code demo below
+ * ============================================================================
  */
 public class JoinThreadExample {
     public static void main(String[] args) throws InterruptedException {

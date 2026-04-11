@@ -1,25 +1,66 @@
 package LLD.Topics.MultiThreading.BasicMultiThreading;
 
 /*
- * Why Runnable is used
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                     Runnable (implements Runnable)                      ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * Runnable is the unit of work that a Thread will run. You pass it to new Thread(runnable);
- * when you call start(), the JVM eventually invokes that object's run() on a new thread.
+ * ============================================================================
+ * 1. What is Runnable?
+ * ============================================================================
  *
- * 1) Separation of concerns — "what to run" (Runnable) is separate from thread machinery (Thread).
- *    ThreadOne / ThreadTwo are normal types that expose run(); they do not have to extend Thread.
+ * Runnable is a functional interface with a single method: void run().
+ * It represents "the code a thread should execute." You pass it to
+ * new Thread(runnable) and call start().
  *
- * 2) Single inheritance — a class can extend only one superclass. If your class already extends
- *    something else, it cannot extend Thread but it can implement Runnable and still run on a thread.
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
  *
- * 3) Reuse across APIs — the same Runnable can be given to Thread now and to ExecutorService
- *    later without tying your code to Thread subclasses.
+ *   ┌──────────────────┐        ┌──────────────────┐
+ *   │  ThreadOne        │        │  ThreadTwo        │
+ *   │ implements Runnable│        │ implements Runnable│
+ *   │  run() { ... }    │        │  run() { ... }    │
+ *   └────────┬─────────┘        └────────┬─────────┘
+ *            │                           │
+ *            ▼                           ▼
+ *   new Thread(threadOne)        new Thread(threadTwo)
+ *            │                           │
+ *            ▼                           ▼
+ *        one.start()                 two.start()
+ *            │                           │
+ *            ▼                           ▼
+ *   ┌─── OS Thread 1 ───┐     ┌─── OS Thread 2 ───┐     ┌─── Main Thread ──┐
+ *   │ run(): prints 0-4  │     │ run(): prints 0-4  │     │ continues or ends│
+ *   └────────────────────┘     └────────────────────┘     └──────────────────┘
+ *         ◄─── all three run concurrently (interleaved output) ───►
  *
- * 4) Anonymous classes / lambdas — Thread three uses an anonymous Runnable; with Java 8+ you
- *    could use a lambda because Runnable is a functional interface (single abstract method: run()).
+ * ============================================================================
+ * 3. Why use Runnable?
+ * ============================================================================
  *
- * One line: Runnable = "the code the thread should execute"; Thread = "an OS thread that runs
- * a Runnable's run()." See also ExtendsThreadExample for Runnable vs extending Thread.
+ * 1) Separation of concerns -- "what to run" (Runnable) is separate from
+ *    thread machinery (Thread class).
+ * 2) Single inheritance -- a class can extend only one superclass. If your
+ *    class already extends something else, it cannot extend Thread but CAN
+ *    implement Runnable.
+ * 3) Reuse across APIs -- same Runnable works with Thread, ExecutorService,
+ *    ScheduledExecutorService, etc.
+ * 4) Lambdas -- Runnable is a @FunctionalInterface, so you can write:
+ *    new Thread(() -> { ... }).start();
+ *
+ * ============================================================================
+ * 4. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Background file I/O: new Thread(() -> writeLogToDisk()).start();
+ * - Offloading heavy computation so the UI thread stays responsive (Android/Swing).
+ * - Submitting tasks to an ExecutorService: executor.execute(myRunnable);
+ * - Timer/scheduler callbacks: scheduledExecutor.schedule(myRunnable, 5, SECONDS);
+ *
+ * ============================================================================
+ * 5. Code demo below
+ * ============================================================================
  */
 public class RunnableThreadExample {
     public static void main(String[] args) {
@@ -35,8 +76,6 @@ public class RunnableThreadExample {
             }
         });
 
-        // to start the thread
-        // Jvm might immediately run it or wait for the resource of the cpu to be available
         one.start();
         two.start();
         three.start();

@@ -113,7 +113,16 @@ import java.util.concurrent.TimeUnit;
  * other. Higher throughput than ArrayBlockingQueue under contention, at the cost of per-node GC.
  *
  * ============================================================================
- * 6. Demo below
+ * 6. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - ExecutorService default queue: newFixedThreadPool uses an unbounded LinkedBlockingQueue.
+ * - High-throughput messaging: producer and consumer rarely contend (two separate locks).
+ * - Log aggregation: multiple app threads produce log events, a single writer thread drains.
+ * - Task scheduling: optionally bounded queue prevents memory blowup under sustained load.
+ *
+ * ============================================================================
+ * 7. Demo below
  * ============================================================================
  * Bounded LinkedBlockingQueue(capacity 4). One producer puts 12 items, two consumers process them.
  * You can see the producer block when all 4 slots are full, exactly like ArrayBlockingQueue —

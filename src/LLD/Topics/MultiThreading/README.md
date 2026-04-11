@@ -1,6 +1,7 @@
 # MultiThreading in Java
 
 A progressive walkthrough of Java multithreading — from sequential execution to concurrent collections.
+Every file includes: structured theory, ASCII diagrams, practical real-world uses, and a code demo.
 Files are listed in the order they were created.
 
 ---
@@ -59,6 +60,8 @@ Files are listed in the order they were created.
 | 20 | [`ConcurrentCollection/ArrayBlockingQueueDemo.java`](ConcurrentCollection/ArrayBlockingQueueDemo.java) | `ArrayBlockingQueue` — single `ReentrantLock`, two `Condition`s (`notEmpty`, `notFull`), bounded array, fairness option. Detailed put/take flow diagrams. |
 | 21 | [`ConcurrentCollection/LinkedBLockingQueueDemo.java`](ConcurrentCollection/LinkedBLockingQueueDemo.java) | `LinkedBlockingQueue` — two-lock design (`putLock`, `takeLock`), `AtomicInteger` count, higher throughput than `ArrayBlockingQueue`. Comparison table. |
 | 22 | [`ConcurrentCollection/ConcurrentCache.java`](ConcurrentCollection/ConcurrentCache.java) | `ConcurrentHashMap` deep-dive — per-bucket `synchronized` + CAS, lock-free `get()` via volatile, contention matrix (read/write same/different bucket), Java 7 vs 8+ locking, comparison to `Hashtable`/`synchronizedMap`. |
+| 23 | [`ConcurrentCollection/MultiStageTour.java`](ConcurrentCollection/MultiStageTour.java) | `CyclicBarrier` — multi-stage tour analogy: tourists wait at each stage, barrier trips when all arrive, reusable across stages. Comparison to `CountDownLatch`. |
+| 24 | [`ConcurrentCollection/ExchangerDemo.java`](ConcurrentCollection/ExchangerDemo.java) | `Exchanger` — two threads swap data atomically. First thread blocks until the second arrives, then both exchange objects simultaneously. |
 
 ---
 

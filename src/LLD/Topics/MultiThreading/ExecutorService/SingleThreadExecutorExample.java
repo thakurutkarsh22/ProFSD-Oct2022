@@ -5,44 +5,60 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /*
- * Notes: Executors and ExecutorService
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                   SingleThreadExecutor                                 ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * Executors are how you run Runnable/Callable tasks without new Thread(...).start() for every job.
- * - Executor: "run this task sometime" (execute).
- * - ExecutorService: lifecycle too — submit, shutdown/shutdownNow, awaitTermination, etc.
+ * ============================================================================
+ * 1. What is an ExecutorService?
+ * ============================================================================
  *
- * You usually get one from Executors factory methods, e.g.:
- * - newSingleThreadExecutor() — one worker thread; tasks queue and run strictly one-after-another.
- * - newFixedThreadPool(n) — n threads sharing a queue (parallelism up to n).
- * - newCachedThreadPool() — grows/shrinks with load (be careful in production).
- *
- * What executors do for you:
- * - Thread reuse (especially pools) instead of a new OS thread per tiny job.
+ * Instead of new Thread(...).start() for every task, you use a managed pool:
+ * - Thread reuse (no OS thread creation overhead per task).
  * - Queuing when workers are busy.
  * - Centralized shutdown instead of scattered Thread references.
  *
- * ---
- * Single-thread executor (demo below)
+ * ============================================================================
+ * 2. What is SingleThreadExecutor?
+ * ============================================================================
  *
- * Executors.newSingleThreadExecutor() returns an ExecutorService backed by exactly ONE worker thread.
- * All submitted tasks run on that thread, sequentially (default queue preserves submission order).
+ * Executors.newSingleThreadExecutor() returns an ExecutorService backed by
+ * exactly ONE worker thread. All submitted tasks run sequentially in the
+ * order they were submitted.
  *
- * Why use it:
- * - Strict ordering of work.
- * - Confine non-thread-safe state to one thread with minimal locking.
- * - Simple dedicated background worker without hand-rolling a queue + thread loop.
+ * ============================================================================
+ * 3. How it works -- diagram
+ * ============================================================================
  *
- * Tradeoffs:
- * - No parallelism across those tasks; one slow/blocking task delays everything queued behind it.
- * - Call shutdown/close when done so the JVM can exit (worker is non-daemon by default).
+ *   main thread                          SingleThreadExecutor
+ *   ───────────                          ────────────────────
+ *   execute(task0) ──►  ┌──────────────────────────────────────────────┐
+ *   execute(task1) ──►  │  Unbounded Queue      Single Worker Thread  │
+ *   execute(task2) ──►  │  ┌──────────────┐     ┌──────────────────┐  │
+ *   execute(task3) ──►  │  │ T1 │ T2 │ T3 │ --> │  runs ONE task   │  │
+ *   execute(task4) ──►  │  └──────────────┘     │  at a time       │  │
+ *                       │                        │  T0 -> T1 -> T2  │  │
+ *                       │                        │  -> T3 -> T4     │  │
+ *                       │                        └──────────────────┘  │
+ *                       └──────────────────────────────────────────────┘
  *
- * Contrast: newFixedThreadPool(n) can run up to n tasks at once; single-thread runs one at a time.
+ *   Timeline (each task ~500ms):
+ *     Time   0ms      500ms     1000ms    1500ms    2000ms    2500ms
+ *            │─ T0 ──│── T1 ──│── T2 ──│── T3 ──│── T4 ──│ done
+ *            strictly sequential, same thread reused for all
  *
- * Course / screenshot style (Java 19+):
- *   try (ExecutorService service = Executors.newSingleThreadExecutor()) {
- *       for (int i = 0; i < 5; i++) { service.execute(new Task(i)); }
- *   }
- * Below uses shutdown + awaitTermination so the same logic compiles on Java 11+ as well.
+ * ============================================================================
+ * 4. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Event logging: guarantee log entries are written in order.
+ * - Database writes: serialize writes to avoid concurrent modification.
+ * - UI event dispatch: Swing/JavaFX uses a single-thread executor model.
+ * - Background worker: one dedicated thread for sending emails, notifications, etc.
+ *
+ * ============================================================================
+ * 5. Code demo below
+ * ============================================================================
  */
 public class SingleThreadExecutorExample {
 

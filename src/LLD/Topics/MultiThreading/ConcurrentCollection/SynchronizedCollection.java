@@ -6,20 +6,66 @@ import java.util.Collections;
 import java.util.List;
 
 /*
- * Unsynchronized ArrayList + concurrent writers (intentionally broken demo)
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║              Thread-Safety of Collections (ArrayList)                   ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * ArrayList is not thread-safe. Two threads calling add() at the same time races on the internal
- * array, element count, and modification logic — there is no happens-before between their updates.
+ * ============================================================================
+ * 1. The problem -- ArrayList is NOT thread-safe
+ * ============================================================================
  *
- * Expected output: there is NO single correct answer.
- * - list.size() is often less than 2000 (lost updates / inconsistent internal state).
- * - You may get an exception (e.g. ArrayIndexOutOfBoundsException) or rarely a corrupt state
- *   depending on JVM and timing.
- * - Occasionally you might see 2000 by luck; do not rely on that.
+ * ArrayList.add() is not synchronized. When two threads call add() concurrently,
+ * they race on the internal array, element count, and resize logic.
  *
- * If the list were properly guarded (e.g. Collections.synchronizedList(new ArrayList<>()),
- * explicit synchronized blocks on a shared lock, or java.util.concurrent classes suited to your
- * access pattern), you would expect size 2000 after both threads finish.
+ * ============================================================================
+ * 2. How the race condition happens -- diagram
+ * ============================================================================
+ *
+ *   ArrayList internals:  Object[] elementData,  int size
+ *
+ *   Thread 1: add(42)                    Thread 2: add(99)
+ *   ──────────────────                   ──────────────────
+ *   read size = 5                        read size = 5     (same!)
+ *   elementData[5] = 42                  elementData[5] = 99  (overwrites 42!)
+ *   size = 6                             size = 6          (should be 7!)
+ *
+ *   Result: ONE element lost, size = 6 instead of 7.
+ *
+ *   Possible outcomes with concurrent add():
+ *   ┌──────────────────────────────────────────────────────────────┐
+ *   │  - list.size() < expected (lost updates)                    │
+ *   │  - ArrayIndexOutOfBoundsException (resize race)             │
+ *   │  - Null elements in the middle of the list                  │
+ *   │  - Occasionally correct by luck (do NOT rely on this)       │
+ *   └──────────────────────────────────────────────────────────────┘
+ *
+ * ============================================================================
+ * 3. The fix -- synchronized wrappers or concurrent collections
+ * ============================================================================
+ *
+ *   Option 1: Collections.synchronizedList(new ArrayList<>())
+ *   - Wraps every method in synchronized(mutex) { ... }
+ *   - Simple fix, but ONE lock for ALL operations (low throughput).
+ *
+ *   Option 2: CopyOnWriteArrayList
+ *   - Creates a new array copy on every write. Reads are lock-free.
+ *   - Good when reads >> writes (e.g., listener lists).
+ *
+ *   Option 3: ConcurrentLinkedQueue / ConcurrentHashMap
+ *   - Fine-grained locking or lock-free algorithms for high concurrency.
+ *
+ * ============================================================================
+ * 4. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Shared shopping cart: multiple requests adding items concurrently need a thread-safe list.
+ * - Event listeners: CopyOnWriteArrayList for rarely-changing listener registrations.
+ * - Aggregating results: multiple threads collecting results into a synchronized list.
+ * - Metrics collection: concurrent counters/lists tracking request stats across threads.
+ *
+ * ============================================================================
+ * 5. Code demo below
+ * ============================================================================
  */
 public class SynchronizedCollection {
 

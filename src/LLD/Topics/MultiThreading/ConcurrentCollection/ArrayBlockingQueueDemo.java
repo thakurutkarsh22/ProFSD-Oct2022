@@ -152,7 +152,16 @@ import java.util.concurrent.TimeUnit;
  * when full; take blocks on notEmpty when empty. Each signals the other after modifying the queue.
  *
  * ============================================================================
- * 6. Demo below
+ * 6. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Thread pool work queue: FixedThreadPool can use ArrayBlockingQueue to bound pending tasks.
+ * - Rate limiter: bounded capacity naturally throttles producers.
+ * - Request buffering: web server queues incoming requests before worker threads process them.
+ * - Audit logging: bounded buffer between log-producing threads and a disk-writing consumer.
+ *
+ * ============================================================================
+ * 7. Demo below
  * ============================================================================
  * One producer puts items 1..15 into a queue of capacity 5. Two consumers take items.
  * Because the queue is small, the producer blocks after filling 5 slots until a consumer takes.

@@ -1,9 +1,63 @@
 package LLD.Topics.MultiThreading.ThreadSynchronization;
 
 /*
- * Finer-grained locks: two independent counters use two monitors (lock1, lock2).
- * Contrast with SynchronizationDemo: synchronized static methods share one class lock and
- * serialize unrelated work. See block comment at bottom of this file.
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                  Fine-Grained Locking (Custom Lock Objects)            ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ *
+ * ============================================================================
+ * 1. What is fine-grained locking?
+ * ============================================================================
+ *
+ * Instead of one big lock for the whole class (synchronized static), you create
+ * separate lock objects for independent pieces of state. Threads touching
+ * different state can run in PARALLEL because they acquire different locks.
+ *
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
+ *
+ *   ┌──────────────────────────────────────────────────────────────────────┐
+ *   │                                                                      │
+ *   │   lock1 (Object)          lock2 (Object)                           │
+ *   │   guards counter1         guards counter2                           │
+ *   │                                                                      │
+ *   │   Thread 1                Thread 2                                  │
+ *   │   synchronized(lock1)     synchronized(lock2)  <-- DIFFERENT locks! │
+ *   │   │  counter1++           │  counter2++                             │
+ *   │   release lock1           release lock2                             │
+ *   │                                                                      │
+ *   │   ◄────── both run in PARALLEL ──────►                              │
+ *   └──────────────────────────────────────────────────────────────────────┘
+ *
+ *   Contrast with SynchronizationDemo.java (one class lock):
+ *
+ *   ┌──────────────────────────────────────┐
+ *   │  ONE class lock                      │
+ *   │  Thread 1: increment1() -- lock      │
+ *   │  Thread 2: increment2() -- BLOCKED!  │  <-- unnecessary serialization
+ *   └──────────────────────────────────────┘
+ *
+ *   vs. this file (two locks):
+ *
+ *   ┌──────────────────────────────────────┐
+ *   │  lock1          lock2                │
+ *   │  Thread 1       Thread 2             │
+ *   │  increment1()   increment2()         │  <-- both run at the same time!
+ *   └──────────────────────────────────────┘
+ *
+ * ============================================================================
+ * 3. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Database connection pool: separate lock for "borrow" vs "return" operations.
+ * - ConcurrentHashMap uses per-bucket locks (same idea, scaled to N buckets).
+ * - Web server: separate locks for session store vs request counter.
+ * - Any class with multiple independent mutable fields that are accessed concurrently.
+ *
+ * ============================================================================
+ * 4. Code demo below
+ * ============================================================================
  */
 public class LockWithCustomObjectsExample {
 
@@ -53,24 +107,6 @@ public class LockWithCustomObjectsExample {
 }
 
 /**
- * Why this approach is good
- *
- * Problem with one class-wide lock (e.g. two synchronized static methods on the same class):
- * both methods use the same monitor (the Class object). While one thread runs increment1, another
- * thread cannot enter increment2 even though counter1 and counter2 are unrelated—you pay extra
- * contention and lose parallelism.
- *
- * What this example does:
- * - counter1++ is guarded only by lock1; counter2++ only by lock2.
- * - One thread can hold lock1 while another holds lock2 at the same time, so updates stay
- *   thread-safe without serializing two independent operations on a single lock.
- *
- * Why dedicated Object instances:
- * - Intent is obvious: each lock protects one piece of state.
- * - static final ensures one shared monitor per counter for the whole class (never use
- *   synchronized (new Object()) inside the method—that would create a different lock per call and
- *   would not exclude other threads).
- *
- * Caveat: if two counters must always change together as one invariant, you would need one lock
- * (or a defined lock order) across both updates—not two independent locks.
+ * Output: 10000 -- 10000
+ * Both counters correct AND both threads ran in parallel (faster than single class lock).
  */

@@ -5,30 +5,57 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /*
- * Cached thread pool (Executors.newCachedThreadPool())
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                      CachedThreadPool                                  ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * What it does:
- * - Creates new threads as needed when there is no idle worker to take a task.
- * - Reuses existing idle threads when work arrives (threads are recycled).
- * - Idle threads are typically retired after ~60 seconds of no use (implementation detail).
- * - Uses a handoff-style queue (SynchronousQueue): tasks are usually passed directly to a thread
- *   or a new thread is started, rather than sitting in a long unbounded FIFO behind a fixed cap.
+ * ============================================================================
+ * 1. What is CachedThreadPool?
+ * ============================================================================
  *
- * Why it is used:
- * - Good for lots of short, independent tasks where you do not want a fixed cap on parallelism
- *   and bursts of work should start quickly without a large pre-allocated pool.
- * - Simplifies "fire many async jobs" demos when each job is short-lived.
+ * Executors.newCachedThreadPool() creates threads on demand and reuses idle ones.
+ * - No fixed pool size -- grows as needed, shrinks when idle (60s timeout).
+ * - Uses SynchronousQueue: tasks are handed off directly to a thread (no buffering).
+ * - If no idle thread is available, a NEW thread is created immediately.
  *
- * Cautions (important in production):
- * - Under heavy or sustained load, the pool can grow to many threads (memory + context switching).
- *   Prefer newFixedThreadPool(n), a configured ThreadPoolExecutor, or virtual threads (Java 21+)
- *   when you need a hard upper bound.
- * - Do not use it for CPU-bound overload without back-pressure; combine with limits or queues.
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
  *
- * Demo: submit several tasks; you may see many pool-* thread names for concurrent work, and reuse
- * as tasks finish. Interleaving depends on the scheduler.
+ *   main thread                          CachedThreadPool
+ *   ───────────                          ─────────────────
+ *   execute(T0) ──►  ┌─────────────────────────────────────────────────┐
+ *   execute(T1) ──►  │  SynchronousQueue          Dynamic Workers     │
+ *   execute(T2) ──►  │  (handoff, no buffer)      ┌───────────────┐   │
+ *   execute(T3) ──►  │        │                    │ W-1: runs T0  │   │
+ *   ...              │        │                    │ W-2: runs T1  │   │
+ *                     │        │                    │ W-3: runs T2  │   │
+ *                     │        ▼                    │ W-4: runs T3  │   │
+ *                     │  No idle thread?            │ ...new as     │   │
+ *                     │  -> create new thread!      │ needed!       │   │
+ *                     │                             └───────────────┘   │
+ *                     │  Thread idle 60s? -> thread dies (pool shrinks) │
+ *                     └─────────────────────────────────────────────────┘
  *
- * Lifecycle: shutdown + awaitTermination (Java 11+).
+ *   Back-pressure problem:
+ *   ┌─────────────────────────────────────────────────────────────────┐
+ *   │  100M tasks submitted --> 100M threads created --> OOM crash!   │
+ *   │  No queue to absorb burst. Every task gets its own thread.      │
+ *   │  Fix: use FixedThreadPool or set max pool size manually.        │
+ *   └─────────────────────────────────────────────────────────────────┘
+ *
+ * ============================================================================
+ * 3. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Short-lived async tasks: fire many quick HTTP calls, each gets a thread fast.
+ * - Chat server: handle brief client messages where connections are short.
+ * - Test harnesses: spin up many threads quickly without pre-sizing a pool.
+ * - NOT for CPU-bound or long-running tasks (unbounded growth risk).
+ *
+ * ============================================================================
+ * 4. Code demo below
+ * ============================================================================
  */
 public class CachedThreadPoolExample {
 

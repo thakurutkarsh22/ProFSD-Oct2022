@@ -5,20 +5,53 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /*
- * Fixed thread pool (Executors.newFixedThreadPool(n))
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                       FixedThreadPool                                  ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * - Exactly n worker threads are created up front (or lazily, but the pool size is capped at n).
- * - Tasks are queued when all n threads are busy; extra tasks wait instead of spawning more threads.
- * - Up to n tasks can run in parallel — unlike newSingleThreadExecutor() (parallelism 1).
+ * ============================================================================
+ * 1. What is FixedThreadPool?
+ * ============================================================================
  *
- * Good when you want stable resource usage (predictable max threads) and can accept unbounded
- * queue growth for submitted work (default implementation uses a LinkedBlockingQueue with no cap).
+ * Executors.newFixedThreadPool(n) creates a pool of exactly N worker threads.
+ * Tasks are queued in an unbounded LinkedBlockingQueue. At most N tasks run
+ * in parallel; the rest wait in the queue.
  *
- * Demo: pool size 3, submit 6 tasks — you should see at most 3 different worker thread names
- * active at once; threads are reused for later tasks. (Exact interleaving is scheduler-dependent.)
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
  *
- * Lifecycle: shutdown + awaitTermination (Java 11+). Java 19+ can use try-with-resources on
- * ExecutorService instead.
+ *   main thread                          FixedThreadPool (n=3)
+ *   ───────────                          ─────────────────────
+ *   execute(T0) ──►  ┌────────────────────────────────────────────────────┐
+ *   execute(T1) ──►  │  Unbounded Queue        3 Worker Threads          │
+ *   execute(T2) ──►  │  ┌──────────┐          ┌──────────────────┐      │
+ *   execute(T3) ──►  │  │ T3 │ T4  │ -------> │ Worker-1: runs T0│      │
+ *   execute(T4) ──►  │  │ T5 │     │          │ Worker-2: runs T1│      │
+ *   execute(T5) ──►  │  └──────────┘          │ Worker-3: runs T2│      │
+ *                     │                         └──────────────────┘      │
+ *                     │  When T0 finishes, Worker-1 picks T3 from queue  │
+ *                     └────────────────────────────────────────────────────┘
+ *
+ *   Timeline (6 tasks, 3 threads, each ~500ms):
+ *     Time   0ms          500ms        1000ms
+ *     W-1    │─── T0 ────│─── T3 ────│ done
+ *     W-2    │─── T1 ────│─── T4 ────│ done
+ *     W-3    │─── T2 ────│─── T5 ────│ done
+ *            ◄── batch 1 ──►◄── batch 2 ──►
+ *
+ * ============================================================================
+ * 3. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Web server: fixed pool of N threads handling incoming HTTP requests.
+ * - Batch processing: process N files in parallel, bounded resource usage.
+ * - Database connection pool: match thread pool size to DB connection limit.
+ * - Image/video processing: N parallel encoders, one per CPU core.
+ *
+ * ============================================================================
+ * 4. Code demo below
+ * ============================================================================
  */
 public class FixedThreadPoolExample {
 

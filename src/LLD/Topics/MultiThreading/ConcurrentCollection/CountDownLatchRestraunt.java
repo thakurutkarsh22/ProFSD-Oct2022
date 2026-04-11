@@ -3,50 +3,159 @@ package LLD.Topics.MultiThreading.ConcurrentCollection;
 import java.util.concurrent.CountDownLatch;
 
 /*
- * CountDownLatch — what this file is about
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                          CountDownLatch                                ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * Problem (restaurant)
- * - Several chefs each prepare one dish in parallel.
- * - The kitchen manager must not announce “everything is ready” until every dish is done.
- * - CountDownLatch models “N things must complete before we continue.”
+ * ============================================================================
+ * 1. What is CountDownLatch?
+ * ============================================================================
  *
- * Mechanics
- * - new CountDownLatch(N) starts with count N.
- * - Each completing party calls countDown() once → count decreases.
- * - Any thread that calls await() blocks until the count reaches 0, then wakes up (and await() returns).
- * - The latch does not reset; it is one-shot for this “round” of work.
+ * A one-shot synchronization aid: one or more threads wait (await) until a
+ * set of operations in other threads completes (countDown reaches 0).
  *
- * How THIS program runs
- * 1. numberOfChefs = 3 → latch count starts at 3.
- * 2. Three Thread objects each run a Chef: they print “preparing”, sleep 2s, print “finished”, then
- *    latch.countDown() exactly once.
+ *   new CountDownLatch(N)  -> internal count starts at N
+ *   countDown()            -> decrements count by 1 (thread-safe, never blocks)
+ *   await()                -> blocks the caller until count reaches 0
+ *
+ * Once the count reaches 0 it stays at 0 -- the latch CANNOT be reused.
+ *
+ * ============================================================================
+ * 2. Restaurant analogy
+ * ============================================================================
+ *
+ *   Kitchen Manager (main thread)  = the one who calls await()
+ *   Chefs (worker threads)         = the ones who call countDown()
+ *   Latch count                    = number of dishes that must be ready
+ *
+ * The manager says "I won't serve until ALL 3 dishes are done."
+ * Each chef finishes a dish -> calls countDown().
+ * When the 3rd chef finishes -> count hits 0 -> manager wakes up -> "All ready!"
+ *
+ * ============================================================================
+ * 3. Diagram -- how CountDownLatch works
+ * ============================================================================
+ *
+ *   ┌──────────┐     ┌──────────┐     ┌──────────┐
+ *   │  Chef A  │     │  Chef B  │     │  Chef C  │
+ *   │ (Pizza)  │     │ (Pasta)  │     │ (Salad)  │
+ *   └────┬─────┘     └────┬─────┘     └────┬─────┘
+ *        │                │                │
+ *     preparing        preparing        preparing
+ *     (~2 sec)         (~2 sec)         (~2 sec)
+ *        │                │                │
+ *        ▼                │                │
+ *   countDown()           │                │          Latch count: 3 -> 2
+ *        │                ▼                │
+ *        │           countDown()           │          Latch count: 2 -> 1
+ *        │                │                ▼
+ *        │                │           countDown()     Latch count: 1 -> 0  *
+ *        │                │                │
+ *   ─────┴────────────────┴────────────────┴──────────────────────────────
+ *                                                     │
+ *                                                     ▼
+ *                              ┌────────────────────────────────────────┐
+ *                              │     Main thread (Kitchen Manager)      │
+ *                              │                                        │
+ *                              │  latch.await()  <-- BLOCKED while > 0  │
+ *                              │       ...                              │
+ *                              │  count hits 0 -> UNBLOCKED *           │
+ *                              │                                        │
+ *                              │  "All the dishes are ready !!"         │
+ *                              └────────────────────────────────────────┘
+ *
+ * ============================================================================
+ * 4. Timeline for this program
+ * ============================================================================
+ *
+ *   Time     Chef A          Chef B          Chef C          Main (Manager)    Count
+ *   ─────    ──────────      ──────────      ──────────      ──────────────    ─────
+ *   0.0s     preparing       preparing       preparing       await() BLOCKED     3
+ *            Pizza           Pasta           Salad
+ *   ~2.0s    finished!       finished!       finished!       still blocked       3
+ *            countDown()                                                       -> 2
+ *                            countDown()                                       -> 1
+ *                                            countDown()                       -> 0 *
+ *                                                            UNBLOCKED!
+ *                                                            prints "All ready"
+ *
+ * ============================================================================
+ * 5. Step-by-step flow of THIS program
+ * ============================================================================
+ *
+ * 1. numberOfChefs = 3 -> latch count starts at 3.
+ * 2. Three Thread objects each run a Chef: they print "preparing", sleep 2s,
+ *    print "finished", then latch.countDown() exactly once.
  * 3. The main thread reaches latch.await() immediately after starting the three threads.
- *    - await() means: “pause here until the internal count is 0.”
- *    - Until all three chefs have called countDown(), main stays blocked and does not print the final line.
- * 4. After the third countDown(), count is 0 → main’s await() returns → prints that all dishes are ready.
+ *    - await() means: "pause here until the internal count is 0."
+ *    - Until all three chefs have called countDown(), main stays blocked.
+ * 4. After the third countDown(), count is 0 -> main's await() returns
+ *    -> prints "All the dishes are ready !!"
  *
- * Role of await() on main
- * - Main plays the “manager”: it must not run the code after await() until every chef has signaled
- *   completion via countDown(). Without await(), main could print “all ready” before chefs finish.
+ * ============================================================================
+ * 6. latch.await() vs Thread.join()
+ * ============================================================================
  *
- * latch.await() vs Thread.join() (see BasicMultiThreading/JoinThreadExample)
- * - join(thread): you wait until that specific Thread’s run() finishes and the thread terminates.
- *   It is tied to the lifetime of a Thread object you hold. Example: one.join(); two.join();
- * - latch.await(): you wait until the latch count reaches zero because some code called countDown()
- *   that many times. It is tied to explicit signals, not strictly to “thread died.”
- *   In this file, countDown() happens at the end of Chef.run(), so it looks similar to join — but
- *   you could countDown() in the middle of run(), or from a pool worker, callback, or after several
- *   steps, and await() would still be the right “all N events happened” gate.
- * - One latch can unblock many waiters at once; join is always “wait for this one thread.”
- * - join throws InterruptedException; await() also throws InterruptedException (and has timed overload).
+ *   Feature           Thread.join()                 CountDownLatch.await()
+ *   ───────────────   ──────────────────────────    ──────────────────────────────
+ *   Waits for         A specific thread to DIE      The count to reach 0
+ *   Tied to           Thread lifecycle               Explicit countDown() signals
+ *   Multiple waiters  No (one join per thread)       Yes (many threads can await)
+ *   Signal from       Thread termination only        Anywhere: mid-run, callback,
+ *                                                    pool worker, different class
+ *   Reusable          No                             No (one-shot)
  *
- * Gotchas
- * - If a chef never countDown() (bug or early exit), await() waits forever unless you use await(timeout, unit).
- * - countDown() is cheap and thread-safe; do not confuse with wait() on Object (different API).
+ *   join():  "wait for THIS thread to finish."
+ *   await(): "wait for N events to happen (I don't care which threads)."
  *
- * Contrast (interviews)
- * - CountDownLatch: wait for N events, one-shot.
- * - CyclicBarrier: same parties rendezvous and can reuse the barrier for another round.
+ *   join():
+ *     thread1.join();   <-- waits for thread1 to die
+ *     thread2.join();   <-- then waits for thread2 to die (sequential waits)
+ *
+ *   await():
+ *     latch.await();    <-- waits for count -> 0 (any thread can countDown())
+ *                          all signals aggregated into one wait call
+ *
+ * ============================================================================
+ * 7. CountDownLatch vs CyclicBarrier (interview contrast)
+ * ============================================================================
+ *
+ *   Feature               CountDownLatch               CyclicBarrier
+ *   ───────────────────   ─────────────────────────    ─────────────────────────
+ *   Reusable?             NO -- one-shot               YES -- resets after trip
+ *   Who waits?            One or more watchers          All N participants
+ *   Who counts?           Any thread (countDown)        Same threads that wait
+ *   Barrier action?       No                            Yes (runs on last arrival)
+ *   Use case              "I wait for N events"         "We all wait for each
+ *                                                        other, then go together"
+ *
+ * ============================================================================
+ * 8. Gotchas
+ * ============================================================================
+ *
+ * - If a chef never calls countDown() (bug/crash), await() blocks forever.
+ *   Use await(timeout, TimeUnit) in production.
+ * - countDown() below zero is a no-op (count stays 0, no exception).
+ * - CountDownLatch is one-shot; for reusable barriers, use CyclicBarrier.
+ *
+ * ============================================================================
+ * 9. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - App startup: main waits for all microservice connections to be ready before serving traffic.
+ * - Test harness: start N threads simultaneously (all wait on a latch, then release at once).
+ * - Batch processing: wait for all file-parsing threads to finish before merging results.
+ * - Health checks: wait for all subsystem probes to report back before declaring "healthy."
+ *
+ * ============================================================================
+ * 10. Interview one-liner
+ * ============================================================================
+ * CountDownLatch: one or more threads block on await() until N other threads
+ * call countDown(), reducing the count to zero. One-shot, not reusable.
+ *
+ * ============================================================================
+ * 11. Code demo below
+ * ============================================================================
  */
 public class CountDownLatchRestraunt {
 
@@ -62,7 +171,7 @@ public class CountDownLatchRestraunt {
         two.start();
         three.start();
 
-        // Block until all chefs have called countDown() (count 3 → 0). Then continue.
+        // Block until all chefs have called countDown() (count 3 -> 0). Then continue.
         latch.await();
 
         System.out.println("All the dishes are ready !!");
@@ -98,6 +207,6 @@ class Chef implements Runnable {
     }
 }
 
-// all in all this is dynamic join 
+// all in all this is dynamic join
 // when we have dynamic multiple threads and we want to wait for all of them to complete
 // countdown latch do not reset the count once it is done

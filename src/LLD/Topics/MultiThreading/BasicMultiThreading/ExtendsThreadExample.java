@@ -1,5 +1,61 @@
 package LLD.Topics.MultiThreading.BasicMultiThreading;
 
+/*
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                     extends Thread                                     ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ *
+ * ============================================================================
+ * 1. What is "extends Thread"?
+ * ============================================================================
+ *
+ * Instead of implementing Runnable, your class directly extends java.lang.Thread
+ * and overrides run(). You then call start() on the instance itself.
+ *
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
+ *
+ *   ┌──────────────────┐        ┌──────────────────┐
+ *   │  Thread1          │        │  Thread2          │
+ *   │  extends Thread   │        │  extends Thread   │
+ *   │  run() { ... }    │        │  run() { ... }    │
+ *   └────────┬─────────┘        └────────┬─────────┘
+ *            │                           │
+ *        one.start()                 two.start()
+ *            │                           │
+ *   ┌─── OS Thread 1 ───┐     ┌─── OS Thread 2 ───┐     ┌─── Main Thread ──────┐
+ *   │ run(): prints 0-4  │     │ run(): prints 0-4  │     │ prints "Done" + loop │
+ *   └────────────────────┘     └────────────────────┘     └──────────────────────┘
+ *         ◄─── all three run concurrently (interleaved output) ───►
+ *
+ *   Note: main prints "Done executing" right after start() -- it does NOT wait
+ *   for Thread1/Thread2 to finish (no join() here).
+ *
+ * ============================================================================
+ * 3. Runnable vs extends Thread
+ * ============================================================================
+ *
+ *   Feature               extends Thread             implements Runnable
+ *   ───────────────────   ──────────────────────     ──────────────────────
+ *   Inheritance           Burns single inheritance   Free to extend another class
+ *   Coupling              Tight (IS-A Thread)        Loose (IS-A task)
+ *   Reuse                 Only with Thread            Works with Executor, etc.
+ *   Simplicity            Direct start()             Needs new Thread(runnable)
+ *   Recommendation        Demos / quick tests        Production code
+ *
+ * ============================================================================
+ * 4. Practical uses (one-liners)
+ * ============================================================================
+ *
+ * - Quick prototypes/demos where you need a thread in 3 lines.
+ * - Custom thread subclasses that override interrupt(), getName(), or carry per-thread state.
+ * - In practice, prefer Runnable/Callable + ExecutorService for real applications.
+ *
+ * ============================================================================
+ * 5. Code demo below
+ * ============================================================================
+ */
 public class ExtendsThreadExample {
     public static void main(String[] args) {
         Thread one = new Thread1();
@@ -8,7 +64,6 @@ public class ExtendsThreadExample {
         one.start();
         two.start();
         System.out.println("Done executing the threads!");
-//        System.out.println(Thread.());
 
         for (int i = 0; i < 1000; i++) {
             if(i == 999) {
@@ -51,23 +106,4 @@ class Thread2 extends Thread {
  * Thread one: 3
  * Thread one: 4
  * Thread two: 4
- */
-
-/*
-    Runnable vs extending Thread
-
-    Extends Thread (this file):
-    - Your class IS-A Thread; you call start() on it directly.
-    - You burn Java's single inheritance: Thread1 cannot extend another class.
-    - Tighter coupling to Thread API; less natural if the work is just "a task".
-
-    Implements Runnable (see RunnableThreadExample):
-    - Your class IS-A Runnable (a task); you pass it to new Thread(runnable) then start().
-    - Class can extend another superclass and still run on a thread.
-    - Same task instance can be submitted to an ExecutorService or wrapped in multiple Threads
-      (usually not recommended for one Runnable, but the model is flexible).
-    - Prefer Runnable (or Callable) for most production code; reserve extending Thread for demos.
-
-    Both approaches: override run() with the work; the JVM calls run() on a new thread after start().
-    Never call run() directly if you want parallel execution—use start().
  */

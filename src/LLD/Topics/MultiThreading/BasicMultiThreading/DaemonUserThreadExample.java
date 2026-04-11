@@ -1,33 +1,63 @@
 package LLD.Topics.MultiThreading.BasicMultiThreading;
 
 /*
- * Daemon and user threads
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║                     Daemon vs User Threads                             ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * By the role they play in the JVM, threads fall into two kinds:
- * - User threads (non-daemon): normal application work.
- * - Daemon threads: background helpers; low priority in intent (not the same as Thread priority API).
+ * ============================================================================
+ * 1. What are daemon and user threads?
+ * ============================================================================
  *
- * Main thread
- * - When the JVM starts your program, the thread that runs main() starts right away. You can start
- *   child threads from it. In typical runs the main thread is among the last to finish because it
- *   drives startup/teardown, though any user thread can keep the JVM alive.
+ * - User threads (non-daemon): normal application work. The JVM stays alive
+ *   as long as ANY user thread is running.
+ * - Daemon threads: background helpers. The JVM does NOT wait for daemon
+ *   threads to finish -- they are killed automatically when all user threads end.
  *
- * Daemon threads
- * - Meant for background work (example from the platform: the garbage collector thread). The JVM
- *   does not keep the process alive just because daemon threads are still running.
+ * ============================================================================
+ * 2. How it works -- diagram
+ * ============================================================================
  *
- * Termination
- * - When all user (non-daemon) threads have finished, the JVM shuts down. Any remaining daemon
- *   threads are stopped by the JVM—they do not need to exit cleanly on their own.
+ *   ┌──────────── JVM ─────────────────────────────────────────────────┐
+ *   │                                                                   │
+ *   │  ┌─────────────────┐                                             │
+ *   │  │  Main thread     │  (user thread, starts everything)          │
+ *   │  │  starts bg + user│                                             │
+ *   │  │  then exits      │                                             │
+ *   │  └───────┬─────────┘                                             │
+ *   │          │                                                        │
+ *   │    ┌─────┴──────┐                                                │
+ *   │    ▼            ▼                                                │
+ *   │  ┌────────────────┐     ┌────────────────────┐                  │
+ *   │  │ bgThread       │     │ userThread          │                  │
+ *   │  │ (DAEMON)       │     │ (USER)              │                  │
+ *   │  │ loops 500x     │     │ sleeps 5s, prints   │                  │
+ *   │  │ sleep 1s each  │     │ then exits          │                  │
+ *   │  └───────┬────────┘     └────────┬────────────┘                  │
+ *   │          │                       │                                │
+ *   │          │ ~1s: prints           │ sleeping...                   │
+ *   │          │ ~2s: prints           │ sleeping...                   │
+ *   │          │ ~3s: prints           │ sleeping...                   │
+ *   │          │ ~4s: prints           │ sleeping...                   │
+ *   │          │ ~5s: prints           ▼ "User thread done"           │
+ *   │          │                       (user thread exits)             │
+ *   │          │                                                        │
+ *   │          ▼ KILLED by JVM ← no more user threads alive!          │
+ *   │                                                                   │
+ *   └─────────── JVM EXITS ────────────────────────────────────────────┘
  *
- * Summary
- * - User threads run until their run() completes (or the process exits). Daemon threads are cut
- *   off once no user threads are left, so they should not hold resources that require a guaranteed
- *   flush or close unless you coordinate with user threads.
+ * ============================================================================
+ * 3. Practical uses (one-liners)
+ * ============================================================================
  *
- * This demo: bgThread is daemon (setDaemon(true)); userThread is non-daemon. The user thread
- * sleeps briefly then ends; the daemon loop may stop mid-way when the JVM exits after main and the
- * user thread finish (behavior can vary by timing).
+ * - Garbage collector (JVM's own daemon thread).
+ * - Background log flusher that should stop when the app stops.
+ * - Heartbeat/keep-alive sender that should not prevent JVM shutdown.
+ * - IDE auto-save thread that runs until the editor closes.
+ *
+ * ============================================================================
+ * 4. Code demo below
+ * ============================================================================
  */
 public class DaemonUserThreadExample {
     public static void main(String[] args) {
@@ -78,4 +108,4 @@ class UserThreadHelper implements Runnable {
  * User thread done execution
  */
 
-// because the user thread is terminated hence the deamon thread will be terminated
+// because the user thread is terminated hence the daemon thread will be terminated

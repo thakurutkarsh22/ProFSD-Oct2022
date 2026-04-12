@@ -62,12 +62,35 @@ Files are listed in the order they were created.
 | 22 | [`ConcurrentCollection/ConcurrentCache.java`](ConcurrentCollection/ConcurrentCache.java) | `ConcurrentHashMap` deep-dive — per-bucket `synchronized` + CAS, lock-free `get()` via volatile, contention matrix (read/write same/different bucket), Java 7 vs 8+ locking, comparison to `Hashtable`/`synchronizedMap`. |
 | 23 | [`ConcurrentCollection/MultiStageTour.java`](ConcurrentCollection/MultiStageTour.java) | `CyclicBarrier` — multi-stage tour analogy: tourists wait at each stage, barrier trips when all arrive, reusable across stages. Comparison to `CountDownLatch`. |
 | 24 | [`ConcurrentCollection/ExchangerDemo.java`](ConcurrentCollection/ExchangerDemo.java) | `Exchanger` — two threads swap data atomically. First thread blocks until the second arrives, then both exchange objects simultaneously. |
+| 25 | [`ConcurrentCollection/COWADemo.java`](ConcurrentCollection/COWADemo.java) | `CopyOnWriteArrayList` — every write copies the entire array (O(n)), reads are lock-free snapshots (O(1)). Ideal when reads >> writes. Iterators never throw CME. |
+
+---
+
+## 6. Locks
+
+| # | File | What it covers |
+|---|------|----------------|
+| 26 | [`Locks/ReentrantLockDemo.java`](Locks/ReentrantLockDemo.java) | `ReentrantLock` deep-dive — reentrant vs non-reentrant (with deadlock diagram), hold count, `tryLock()`, timed `tryLock(t, unit)`, `lockInterruptibly()`, fairness (fair vs non-fair), `getHoldCount()`, `getQueueLength()`, `isHeldByCurrentThread()`, `newCondition()`. Full method summary and when to use over `synchronized`. |
+| 27 | [`Locks/ConditionDemo.java`](Locks/ConditionDemo.java) | `Condition` (await/signal) — multiple wait-sets on one `ReentrantLock`. Producer waits on `bufferNotFull`, consumer waits on `bufferNotEmpty`. `signal()` vs `signalAll()`, comparison to `Object.wait()`/`notify()`. |
+| 28 | [`Locks/SharedResource.java`](Locks/SharedResource.java) | `ReentrantReadWriteLock` — shared read-lock (multiple readers in parallel) + exclusive write-lock. Wait queue internals (AQS, batch-wake of consecutive readers), fair vs non-fair, lock downgrade (write→read), comparison to `ReentrantLock`/`synchronized`. |
+| 29 | [`Locks/VolatileKeywordDemo.java`](Locks/VolatileKeywordDemo.java) | The **visibility problem** — CPU cache architecture (Register→L1→L2→L3→RAM), why one core's write is invisible to another, `volatile` keyword (flush to main memory, invalidate caches), happens-before guarantee, side effects (no atomicity for `count++`, ~50x slower reads), `volatile` vs `synchronized` vs `AtomicInteger`. |
+
+---
+
+## 7. Other Concepts
+
+| # | File | What it covers |
+|---|------|----------------|
+| 30 | [`OtherCOncepts/DeadLockDemo.java`](OtherCOncepts/DeadLockDemo.java) | **Deadlocks** — what they are, 4 Coffman conditions (mutual exclusion, hold-and-wait, no preemption, circular wait), deadlock diagram with circular wait graph. How to **spot** deadlocks: manual code review vs programmatic (thread dump via `jstack`, `ThreadMXBean.findDeadlockedThreads()`, JVisualVM/JConsole, static analysis). Prevention strategies with code: consistent lock ordering, `tryLock` with timeout, single lock, lock-free, `lockInterruptibly`. Real debugging session with actual thread dump. |
+| 31 | [`OtherCOncepts/AtomicVariableDemo.java`](OtherCOncepts/AtomicVariableDemo.java) | **Atomic Variables** — read-modify-write problem (`count++` = 3 steps), CAS (Compare-And-Swap) internals with retry loop, `AtomicInteger`/`AtomicLong`/`AtomicBoolean`/`AtomicReference`, all operations (`get`, `set`, `compareAndSet`, `incrementAndGet`, `getAndAdd`, `updateAndGet`), Atomic vs volatile vs synchronized, `LongAdder` for high contention. |
+| 32 | [`OtherCOncepts/ScrapperDemo.java`](OtherCOncepts/ScrapperDemo.java) | **Semaphores** — permit-based concurrency control (N threads at a time), parking lot visualization, `acquire()`/`release()` flow, multiple permits (`acquire(n)`), `tryAcquire()`/`tryAcquire(timeout)`, `availablePermits()`, `drainPermits()`, fairness, Semaphore vs Lock, web scraper throttle demo. |
+| 33 | [`OtherCOncepts/MutexDemo.java`](OtherCOncepts/MutexDemo.java) | **Mutex** (MUTual EXclusion) — only 1 thread at a time, "we already learnt it!" (`synchronized` = intrinsic mutex, `ReentrantLock` = explicit mutex, `Semaphore(1)` = binary semaphore). Key difference: mutex has **ownership** (only holder can release) while `Semaphore(1)` does not. Three code implementations compared side by side. |
 
 ---
 
 ## Learning Path
 
 ```
-Sequential ──► Basic Threads ──► Synchronization ──► Executor Service ──► Concurrent Collections
-  (why?)         (how?)         (safe sharing)       (managed pools)        (thread-safe data)
+Sequential ──► Basic Threads ──► Synchronization ──► Executor Service ──► Concurrent Collections ──► Locks & Volatile ──► Other Concepts
+  (why?)         (how?)         (safe sharing)       (managed pools)        (thread-safe data)        (fine-grained)       (pitfalls)
 ```

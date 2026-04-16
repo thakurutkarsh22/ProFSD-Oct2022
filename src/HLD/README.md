@@ -257,6 +257,33 @@
 
 ---
 
+## Deep Dive Components
+
+### Async Messaging
+| # | Component | File | Time |
+|---|-----------|------|------|
+| 42 | Apache Kafka | [Components/01-Kafka.md](Components/01-Kafka.md) | 6-8 hrs |
+| 43 | Amazon SQS | [Components/02-SQS.md](Components/02-SQS.md) | 5-7 hrs |
+| 44 | Amazon SNS | [Components/03-SNS.md](Components/03-SNS.md) | 5-7 hrs |
+| 45 | RabbitMQ | [Components/04-RabbitMQ.md](Components/04-RabbitMQ.md) | 6-8 hrs |
+
+### Cache
+| # | Component | File | Time |
+|---|-----------|------|------|
+| 46 | Redis | [Components/05-Redis.md](Components/05-Redis.md) | 6-8 hrs |
+
+### Storage
+| # | Component | File | Time |
+|---|-----------|------|------|
+| 47 | Amazon S3 | [Components/06-S3.md](Components/06-S3.md) | 6-8 hrs |
+
+### Observability
+| # | Component | File | Time |
+|---|-----------|------|------|
+| 48 | Grafana & LGTM Stack | [Components/07-Grafana.md](Components/07-Grafana.md) | 6-8 hrs |
+
+---
+
 ## Recommended Study Resources
 
 | Resource | Type | Level |

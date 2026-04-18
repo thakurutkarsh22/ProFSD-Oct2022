@@ -225,6 +225,504 @@ every microservice decoupling conversation — SNS (or its equivalent) shows up.
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
+### SNS Internals — Full Anatomy Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                          │
+│                  SNS INTERNAL ANATOMY — WHAT LIVES INSIDE THE BLACK BOX                  │
+│                                                                                          │
+│  This is what AWS DOESN'T show you. Reconstructed from AWS whitepapers,                 │
+│  re:Invent talks (SRV302, SRV303), and observed behavior.                                │
+│                                                                                          │
+│  ════════════════════════════════════════════════════════════════════════════════════════  │
+│                                                                                          │
+│                          YOUR AWS ACCOUNT (us-east-1)                                    │
+│                                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐    │
+│  │                                                                                  │    │
+│  │    TOPIC: ride-lifecycle-events (Standard)                                       │    │
+│  │    ARN: arn:aws:sns:us-east-1:123456789:ride-lifecycle-events                    │    │
+│  │                                                                                  │    │
+│  │    ┌──────────────────────────────────────────────────────────────────────────┐  │    │
+│  │    │  TOPIC METADATA (stored in internal DynamoDB)                            │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  ┌───────────────────┬──────────────────────────────────────────────┐   │  │    │
+│  │    │  │ TopicArn           │ arn:aws:sns:us-east-1:123456:ride-lifecycle │   │  │    │
+│  │    │  │ TopicType          │ Standard                                    │   │  │    │
+│  │    │  │ Owner              │ 123456789012 (AWS Account ID)              │   │  │    │
+│  │    │  │ Region             │ us-east-1                                   │   │  │    │
+│  │    │  │ DisplayName        │ "Ride Lifecycle Events"                     │   │  │    │
+│  │    │  │ KmsMasterKeyId     │ alias/sns-ride-key (SSE encryption)        │   │  │    │
+│  │    │  │ AccessPolicy       │ {IAM resource policy JSON}                 │   │  │    │
+│  │    │  │ DeliveryPolicy     │ {default retry config}                     │   │  │    │
+│  │    │  │ SubscriptionCount  │ 4                                           │   │  │    │
+│  │    │  │ CreatedAt          │ 2026-01-15T10:30:00Z                       │   │  │    │
+│  │    │  └───────────────────┴──────────────────────────────────────────────┘   │  │    │
+│  │    └──────────────────────────────────────────────────────────────────────────┘  │    │
+│  │                                                                                  │    │
+│  │    ┌──────────────────────────────────────────────────────────────────────────┐  │    │
+│  │    │  SUBSCRIPTIONS (each is an independent delivery binding)                 │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  Sub 1 ────────────────────────────────────────────────────────────────  │  │    │
+│  │    │  │ SubscriptionArn  │ arn:aws:sns:...:ride-lifecycle:abc-123            │  │    │
+│  │    │  │ Protocol         │ sqs                                               │  │    │
+│  │    │  │ Endpoint         │ arn:aws:sqs:...:driver-matching-queue             │  │    │
+│  │    │  │ FilterPolicy     │ {"event_type": ["ride_requested"]}               │  │    │
+│  │    │  │ FilterScope      │ MessageAttributes (default)                       │  │    │
+│  │    │  │ RawMsgDelivery   │ true                                              │  │    │
+│  │    │  │ RedrivePolicy    │ {"deadLetterTargetArn": "...matching-dlq"}       │  │    │
+│  │    │  │ Status           │ CONFIRMED                                         │  │    │
+│  │    │  └─────────────────────────────────────────────────────────────────────  │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  Sub 2 ────────────────────────────────────────────────────────────────  │  │    │
+│  │    │  │ SubscriptionArn  │ arn:aws:sns:...:ride-lifecycle:def-456            │  │    │
+│  │    │  │ Protocol         │ sqs                                               │  │    │
+│  │    │  │ Endpoint         │ arn:aws:sqs:...:eta-calculation-queue             │  │    │
+│  │    │  │ FilterPolicy     │ {"event_type": ["driver_assigned"]}              │  │    │
+│  │    │  │ RedrivePolicy    │ {"deadLetterTargetArn": "...eta-dlq"}            │  │    │
+│  │    │  │ Status           │ CONFIRMED                                         │  │    │
+│  │    │  └─────────────────────────────────────────────────────────────────────  │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  Sub 3 ────────────────────────────────────────────────────────────────  │  │    │
+│  │    │  │ SubscriptionArn  │ arn:aws:sns:...:ride-lifecycle:ghi-789            │  │    │
+│  │    │  │ Protocol         │ lambda                                            │  │    │
+│  │    │  │ Endpoint         │ arn:aws:lambda:...:push-notification              │  │    │
+│  │    │  │ FilterPolicy     │ {"event_type":["driver_assigned","ride_started"]}│  │    │
+│  │    │  │ RedrivePolicy    │ {"deadLetterTargetArn": "...push-notif-dlq"}    │  │    │
+│  │    │  │ Status           │ CONFIRMED                                         │  │    │
+│  │    │  └─────────────────────────────────────────────────────────────────────  │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  Sub 4 ────────────────────────────────────────────────────────────────  │  │    │
+│  │    │  │ SubscriptionArn  │ arn:aws:sns:...:ride-lifecycle:jkl-012            │  │    │
+│  │    │  │ Protocol         │ sqs                                               │  │    │
+│  │    │  │ Endpoint         │ arn:aws:sqs:...:analytics-queue                   │  │    │
+│  │    │  │ FilterPolicy     │ {} (empty = receives ALL messages)               │  │    │
+│  │    │  │ RedrivePolicy    │ {"deadLetterTargetArn": "...analytics-dlq"}      │  │    │
+│  │    │  │ Status           │ CONFIRMED                                         │  │    │
+│  │    │  └─────────────────────────────────────────────────────────────────────  │  │    │
+│  │    │                                                                          │  │    │
+│  │    └──────────────────────────────────────────────────────────────────────────┘  │    │
+│  │                                                                                  │    │
+│  └──────────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐    │
+│  │                                                                                  │    │
+│  │    TOPIC: payment-events.fifo (FIFO)                                             │    │
+│  │    ARN: arn:aws:sns:us-east-1:123456789:payment-events.fifo                      │    │
+│  │                                                                                  │    │
+│  │    ┌──────────────────────────────────────────────────────────────────────────┐  │    │
+│  │    │  FIFO-SPECIFIC INTERNALS (what Standard topics DON'T have)              │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  ┌────────────────────────────────────────────────────────────────┐     │  │    │
+│  │    │  │  MESSAGE GROUP REGISTRY                                        │     │  │    │
+│  │    │  │                                                                │     │  │    │
+│  │    │  │  A FIFO topic internally maintains LANES called                │     │  │    │
+│  │    │  │  "Message Groups." Each group is independent.                  │     │  │    │
+│  │    │  │                                                                │     │  │    │
+│  │    │  │  ┌────────────────────────────────────────────────┐           │     │  │    │
+│  │    │  │  │ MessageGroupId │ Status    │ Head Sequence     │           │     │  │    │
+│  │    │  │  ├────────────────┼───────────┼───────────────────┤           │     │  │    │
+│  │    │  │  │ "ride-A"       │ ACTIVE    │ seq-00000047      │           │     │  │    │
+│  │    │  │  │ "ride-B"       │ ACTIVE    │ seq-00000048      │           │     │  │    │
+│  │    │  │  │ "ride-C"       │ IDLE      │ seq-00000045      │           │     │  │    │
+│  │    │  │  │ "ride-D"       │ ACTIVE    │ seq-00000049      │           │     │  │    │
+│  │    │  │  │ ...            │ ...       │ ...               │           │     │  │    │
+│  │    │  │  └────────────────┴───────────┴───────────────────┘           │     │  │    │
+│  │    │  │                                                                │     │  │    │
+│  │    │  │  • Each group gets its own SEQUENCE COUNTER                   │     │  │    │
+│  │    │  │  • Messages within a group are delivered in sequence order    │     │  │    │
+│  │    │  │  • Groups are INDEPENDENT — ride-A's delivery doesn't        │     │  │    │
+│  │    │  │    block ride-B's delivery                                    │     │  │    │
+│  │    │  │  • Max 300 messages/sec PER GROUP                            │     │  │    │
+│  │    │  │  • Max 3,000 messages/sec PER TOPIC (across all groups)      │     │  │    │
+│  │    │  └────────────────────────────────────────────────────────────────┘     │  │    │
+│  │    │                                                                          │  │    │
+│  │    │  ┌────────────────────────────────────────────────────────────────┐     │  │    │
+│  │    │  │  DEDUPLICATION CACHE                                           │     │  │    │
+│  │    │  │                                                                │     │  │    │
+│  │    │  │  In-memory cache that stores MessageDeduplicationIds          │     │  │    │
+│  │    │  │  for the LAST 5 MINUTES.                                      │     │  │    │
+│  │    │  │                                                                │     │  │    │
+│  │    │  │  ┌──────────────────────────────────┬─────────────────────┐  │     │  │    │
+│  │    │  │  │ DeduplicationId                   │ Expires At          │  │     │  │    │
+│  │    │  │  ├──────────────────────────────────┼─────────────────────┤  │     │  │    │
+│  │    │  │  │ "pay-ride-A-v1"                  │ 2026-04-15T10:05:00 │  │     │  │    │
+│  │    │  │  │ "pay-ride-B-v1"                  │ 2026-04-15T10:05:01 │  │     │  │    │
+│  │    │  │  │ "pay-ride-C-v2"                  │ 2026-04-15T10:04:30 │  │     │  │    │
+│  │    │  │  └──────────────────────────────────┴─────────────────────┘  │     │  │    │
+│  │    │  │                                                                │     │  │    │
+│  │    │  │  • Publish with existing dedup ID → 200 OK but NOT delivered │     │  │    │
+│  │    │  │  • After 5 min → ID evicted → same ID treated as NEW         │     │  │    │
+│  │    │  │  • Content-based dedup: SHA-256(body) used as dedup ID       │     │  │    │
+│  │    │  └────────────────────────────────────────────────────────────────┘     │  │    │
+│  │    │                                                                          │  │    │
+│  │    └──────────────────────────────────────────────────────────────────────────┘  │    │
+│  │                                                                                  │    │
+│  └──────────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                          │
+│  ════════════════════════════════════════════════════════════════════════════════════════  │
+│                                                                                          │
+│                     AWS SNS SERVICE INTERNALS (MANAGED BY AWS)                            │
+│                                                                                          │
+│  ════════════════════════════════════════════════════════════════════════════════════════  │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                          │
+│               WHAT HAPPENS INSIDE SNS WHEN YOU CALL Publish()                            │
+│                                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                                    │  │
+│  │  LAYER 1: API FRONTEND FLEET                                                      │  │
+│  │  ─────────────────────────────                                                    │  │
+│  │                                                                                    │  │
+│  │  Publisher calls: sns.publish(topicArn, message, attributes)                      │  │
+│  │       │                                                                            │  │
+│  │       ▼                                                                            │  │
+│  │  ┌─────────────────────────────────────────────────────────────────────┐          │  │
+│  │  │  REGIONAL ENDPOINT (sns.us-east-1.amazonaws.com)                    │          │  │
+│  │  │                                                                     │          │  │
+│  │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐              │          │  │
+│  │  │  │ API Host│  │ API Host│  │ API Host│  │ API Host│              │          │  │
+│  │  │  │ (AZ-1a) │  │ (AZ-1b) │  │ (AZ-1c) │  │ (AZ-1d) │              │          │  │
+│  │  │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘              │          │  │
+│  │  │       │            │            │            │                     │          │  │
+│  │  │       └────────────┴─────┬──────┴────────────┘                     │          │  │
+│  │  │                          │                                         │          │  │
+│  │  │  Load balancer routes to any healthy host (stateless)              │          │  │
+│  │  └──────────────────────────┼─────────────────────────────────────────┘          │  │
+│  │                             │                                                    │  │
+│  │       What happens on the API host:                                              │  │
+│  │       ┌─────────────────────▼──────────────────────┐                             │  │
+│  │       │ 1. AUTHENTICATE                             │                             │  │
+│  │       │    Verify IAM SigV4 signature               │                             │  │
+│  │       │    Check caller has sns:Publish permission  │                             │  │
+│  │       │    Check topic resource policy allows caller│                             │  │
+│  │       │                                             │                             │  │
+│  │       │ 2. VALIDATE                                 │                             │  │
+│  │       │    Message size ≤ 256 KB?                   │                             │  │
+│  │       │    Attributes ≤ 10?                         │                             │  │
+│  │       │    Attribute names valid?                    │                             │  │
+│  │       │    If FIFO: MessageGroupId present?         │                             │  │
+│  │       │    If FIFO: MessageDeduplicationId present  │                             │  │
+│  │       │            OR content-based dedup enabled?  │                             │  │
+│  │       │                                             │                             │  │
+│  │       │ 3. ENCRYPT (if SSE enabled)                 │                             │  │
+│  │       │    Encrypt message body with KMS key        │                             │  │
+│  │       │                                             │                             │  │
+│  │       │ 4. ASSIGN                                   │                             │  │
+│  │       │    Generate unique MessageId (UUID)         │                             │  │
+│  │       │    If FIFO: assign SequenceNumber           │                             │  │
+│  │       │    (monotonically increasing per group)     │                             │  │
+│  │       └─────────────────────┬───────────────────────┘                             │  │
+│  │                             │                                                    │  │
+│  │                             ▼                                                    │  │
+│  └─────────────────────────────┼────────────────────────────────────────────────────┘  │
+│                                │                                                      │
+│  ┌─────────────────────────────▼────────────────────────────────────────────────────┐  │
+│  │                                                                                    │  │
+│  │  LAYER 2: METADATA STORE (Topic & Subscription Registry)                          │  │
+│  │  ──────────────────────────────────────────────────────                            │  │
+│  │                                                                                    │  │
+│  │  Internal DynamoDB tables (managed by AWS, not visible to you):                   │  │
+│  │                                                                                    │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐                │  │
+│  │  │  TABLE: topics                                               │                │  │
+│  │  │  PK: topic_arn                                               │                │  │
+│  │  │  Stores: config, policies, encryption settings, type         │                │  │
+│  │  └──────────────────────────────────────────────────────────────┘                │  │
+│  │                                                                                    │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐                │  │
+│  │  │  TABLE: subscriptions                                        │                │  │
+│  │  │  PK: topic_arn    SK: subscription_arn                       │                │  │
+│  │  │  Stores: protocol, endpoint, filter_policy, delivery_policy, │                │  │
+│  │  │          redrive_policy (DLQ), raw_message_delivery, status  │                │  │
+│  │  └──────────────────────────────────────────────────────────────┘                │  │
+│  │                                                                                    │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐                │  │
+│  │  │  TABLE: fifo_dedup_cache  (FIFO topics only)                 │                │  │
+│  │  │  PK: topic_arn + dedup_id     TTL: 5 minutes                 │                │  │
+│  │  │  Stores: dedup_id, timestamp, expiry                         │                │  │
+│  │  └──────────────────────────────────────────────────────────────┘                │  │
+│  │                                                                                    │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐                │  │
+│  │  │  TABLE: fifo_sequence_counters  (FIFO topics only)           │                │  │
+│  │  │  PK: topic_arn + message_group_id                            │                │  │
+│  │  │  Stores: last_sequence_number (atomic increment)             │                │  │
+│  │  └──────────────────────────────────────────────────────────────┘                │  │
+│  │                                                                                    │  │
+│  │  The API host queries this store to:                                              │  │
+│  │  • Fetch subscription list for the target topic                                  │  │
+│  │  • Load filter policy for each subscription                                      │  │
+│  │  • Check FIFO dedup cache (is this a duplicate?)                                 │  │
+│  │  • Get and increment sequence counter (FIFO only)                                │  │
+│  │                                                                                    │  │
+│  └─────────────────────────────┬────────────────────────────────────────────────────┘  │
+│                                │                                                      │
+│                                ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                                   │  │
+│  │  LAYER 3: FILTER ENGINE                                                          │  │
+│  │  ─────────────────────────                                                       │  │
+│  │                                                                                   │  │
+│  │  For EACH subscription, evaluate its filter policy against the message:          │  │
+│  │                                                                                   │  │
+│  │  Incoming message attributes:                                                    │  │
+│  │  { "event_type": "ride_requested", "city": "bangalore", "surge": 2.1 }          │  │
+│  │                                                                                   │  │
+│  │       │                                                                           │  │
+│  │       ├──→ Sub 1 filter: {"event_type": ["ride_requested"]}                     │  │
+│  │       │    event_type = "ride_requested" matches "ride_requested" ✓ PASS         │  │
+│  │       │    → Add to delivery list                                                │  │
+│  │       │                                                                           │  │
+│  │       ├──→ Sub 2 filter: {"event_type": ["driver_assigned"]}                    │  │
+│  │       │    event_type = "ride_requested" ≠ "driver_assigned" ✗ REJECT            │  │
+│  │       │    → Skip (message never reaches this subscriber)                        │  │
+│  │       │    → NOT a failure. Not counted in metrics. Just filtered out.           │  │
+│  │       │                                                                           │  │
+│  │       ├──→ Sub 3 filter: {"event_type": ["driver_assigned","ride_started"]}     │  │
+│  │       │    event_type = "ride_requested" ∉ ["driver_assigned","ride_started"]    │  │
+│  │       │    ✗ REJECT → Skip                                                       │  │
+│  │       │                                                                           │  │
+│  │       └──→ Sub 4 filter: {} (empty)                                              │  │
+│  │            Empty filter = MATCH EVERYTHING ✓ PASS                                │  │
+│  │            → Add to delivery list                                                │  │
+│  │                                                                                   │  │
+│  │  Result: delivery_list = [Sub 1 (driver-matching), Sub 4 (analytics)]           │  │
+│  │                                                                                   │  │
+│  │  ⚠ Filter evaluation is FREE — no extra charge per filtered-out message         │  │
+│  │  ⚠ Filter changes take up to 15 minutes to propagate (cached internally)        │  │
+│  │                                                                                   │  │
+│  └─────────────────────────────┬───────────────────────────────────────────────────┘  │
+│                                │                                                      │
+│                                ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                                   │  │
+│  │  LAYER 4: DELIVERY ENGINE (Fan-Out Workers)                                      │  │
+│  │  ─────────────────────────────────────────                                       │  │
+│  │                                                                                   │  │
+│  │  Takes the delivery_list and dispatches to each endpoint IN PARALLEL:            │  │
+│  │                                                                                   │  │
+│  │  delivery_list = [Sub 1 (SQS), Sub 4 (SQS)]                                    │  │
+│  │                                                                                   │  │
+│  │       ┌──────────────────────────────┐                                           │  │
+│  │       │   DELIVERY THREAD POOL        │                                           │  │
+│  │       │                              │                                           │  │
+│  │       │   ┌──────────────────────┐   │     ┌────────────────────┐               │  │
+│  │       │   │ Worker 1 (Sub 1)     │───┼────→│ SQS: driver-       │               │  │
+│  │       │   │ Protocol: SQS       │   │     │ matching-queue     │               │  │
+│  │       │   │ Action: sqs.send()  │   │     │                    │               │  │
+│  │       │   │ Raw: true (no wrap) │   │     │ Message arrives    │               │  │
+│  │       │   └──────────────────────┘   │     │ as raw body        │               │  │
+│  │       │                              │     └────────────────────┘               │  │
+│  │       │   ┌──────────────────────┐   │     ┌────────────────────┐               │  │
+│  │       │   │ Worker 2 (Sub 4)     │───┼────→│ SQS: analytics-   │               │  │
+│  │       │   │ Protocol: SQS       │   │     │ queue              │               │  │
+│  │       │   │ Action: sqs.send()  │   │     │                    │               │  │
+│  │       │   │ Raw: false (wrapped)│   │     │ Message arrives    │               │  │
+│  │       │   └──────────────────────┘   │     │ in SNS JSON envelope│              │  │
+│  │       │                              │     └────────────────────┘               │  │
+│  │       └──────────────────────────────┘                                           │  │
+│  │                                                                                   │  │
+│  │  PROTOCOL-SPECIFIC ADAPTERS:                                                     │  │
+│  │  ┌──────────────────────────────────────────────────────────────────────────┐   │  │
+│  │  │                                                                          │   │  │
+│  │  │  ┌─────────────┐  SNS calls sqs:SendMessage on behalf of the topic     │   │  │
+│  │  │  │  SQS Adapter │  Uses topic's IAM role. Message persisted in SQS.    │   │  │
+│  │  │  │              │  Delivery: INSTANT (within same AWS region)           │   │  │
+│  │  │  │              │  Cost: FREE (SNS → SQS delivery)                     │   │  │
+│  │  │  └─────────────┘                                                        │   │  │
+│  │  │                                                                          │   │  │
+│  │  │  ┌─────────────┐  SNS calls lambda:Invoke asynchronously               │   │  │
+│  │  │  │  Lambda      │  Lambda processes or fails (SNS retries 3x)          │   │  │
+│  │  │  │  Adapter     │  On exhaust → route to subscription DLQ              │   │  │
+│  │  │  │              │  Cost: FREE (SNS → Lambda delivery)                  │   │  │
+│  │  │  └─────────────┘                                                        │   │  │
+│  │  │                                                                          │   │  │
+│  │  │  ┌─────────────┐  SNS makes HTTP POST to the endpoint URL              │   │  │
+│  │  │  │  HTTP/S      │  Expects 2xx response. Else → retry with backoff.    │   │  │
+│  │  │  │  Adapter     │  Retry policy: up to 100,085 attempts over 23 days   │   │  │
+│  │  │  │              │  (default) or custom delivery policy.                │   │  │
+│  │  │  │              │  Message includes X-Amz-Sns-* headers + signature    │   │  │
+│  │  │  └─────────────┘                                                        │   │  │
+│  │  │                                                                          │   │  │
+│  │  │  ┌─────────────┐  SNS calls ses:SendEmail / ses:SendRawEmail           │   │  │
+│  │  │  │  Email       │  Subject = topic display name                        │   │  │
+│  │  │  │  Adapter     │  Body = message text                                 │   │  │
+│  │  │  │              │  No retries (fire-and-forget for email)              │   │  │
+│  │  │  └─────────────┘                                                        │   │  │
+│  │  │                                                                          │   │  │
+│  │  │  ┌─────────────┐  SNS calls Amazon SNS SMS service                     │   │  │
+│  │  │  │  SMS Adapter │  Subject to spend limits and opt-out lists           │   │  │
+│  │  │  │              │  Transactional vs promotional routing                │   │  │
+│  │  │  └─────────────┘                                                        │   │  │
+│  │  │                                                                          │   │  │
+│  │  └──────────────────────────────────────────────────────────────────────────┘   │  │
+│  │                                                                                   │  │
+│  └─────────────────────────────┬───────────────────────────────────────────────────┘  │
+│                                │                                                      │
+│                          (if delivery fails)                                          │
+│                                │                                                      │
+│                                ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                                   │  │
+│  │  LAYER 5: RETRY & DLQ ENGINE                                                    │  │
+│  │  ────────────────────────────                                                    │  │
+│  │                                                                                   │  │
+│  │  When delivery to a subscriber FAILS:                                            │  │
+│  │                                                                                   │  │
+│  │  ┌─────────────────────────────────────────────────────────────────────┐         │  │
+│  │  │  Delivery fails (HTTP 5xx, Lambda error, SQS permission denied)    │         │  │
+│  │  │       │                                                             │         │  │
+│  │  │       ▼                                                             │         │  │
+│  │  │  ┌─────────────────────────────┐                                   │         │  │
+│  │  │  │ RETRY SCHEDULER             │                                   │         │  │
+│  │  │  │                             │                                   │         │  │
+│  │  │  │ Phase 1: Immediate retries  │  3 retries, no delay             │         │  │
+│  │  │  │ Phase 2: Pre-backoff        │  2 retries, 1s apart             │         │  │
+│  │  │  │ Phase 3: Backoff            │  10 retries, exponential          │         │  │
+│  │  │  │          (linear/exponential│  20s → 40s → ... → 20 min        │         │  │
+│  │  │  │           /geometric)       │  (customizable per subscription)  │         │  │
+│  │  │  │ Phase 4: Post-backoff       │  100,000 retries, 20 min each    │         │  │
+│  │  │  │                             │  (total: ~23 days for HTTP)       │         │  │
+│  │  │  └──────────────┬──────────────┘                                   │         │  │
+│  │  │                 │                                                   │         │  │
+│  │  │          (all retries exhausted)                                    │         │  │
+│  │  │                 │                                                   │         │  │
+│  │  │                 ▼                                                   │         │  │
+│  │  │  ┌──────────────────────────────────┐                              │         │  │
+│  │  │  │  DLQ configured?                 │                              │         │  │
+│  │  │  │                                  │                              │         │  │
+│  │  │  │  YES → Send to SQS DLQ          │  Message + failure metadata  │         │  │
+│  │  │  │        (RedrivePolicy target)    │  preserved for investigation │         │  │
+│  │  │  │                                  │                              │         │  │
+│  │  │  │  NO  → MESSAGE DROPPED           │  ← SILENTLY LOST FOREVER    │         │  │
+│  │  │  │        (only CloudWatch metric   │    This is why DLQs are     │         │  │
+│  │  │  │         records the failure)     │    MANDATORY in production  │         │  │
+│  │  │  └──────────────────────────────────┘                              │         │  │
+│  │  └─────────────────────────────────────────────────────────────────────┘         │  │
+│  │                                                                                   │  │
+│  └─────────────────────────────┬───────────────────────────────────────────────────┘  │
+│                                │                                                      │
+│                                ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                                   │  │
+│  │  LAYER 6: METRICS & LOGGING                                                      │  │
+│  │  ──────────────────────────                                                      │  │
+│  │                                                                                   │  │
+│  │  Throughout all layers, SNS emits:                                               │  │
+│  │                                                                                   │  │
+│  │  CloudWatch Metrics (automatic, always-on):                                      │  │
+│  │  ┌───────────────────────────────────┬──────────────────────────────────────┐   │  │
+│  │  │ Metric                            │ Meaning                              │   │  │
+│  │  ├───────────────────────────────────┼──────────────────────────────────────┤   │  │
+│  │  │ NumberOfMessagesPublished         │ Messages received by topic           │   │  │
+│  │  │ PublishSize                       │ Size of published messages           │   │  │
+│  │  │ NumberOfNotificationsDelivered    │ Successful deliveries to subscribers │   │  │
+│  │  │ NumberOfNotificationsFailed       │ Failed deliveries (after all retries)│   │  │
+│  │  │ NumberOfNotificationsFilteredOut  │ Messages that didn't match filter    │   │  │
+│  │  │ SMSSuccessRate                    │ % of SMS messages delivered          │   │  │
+│  │  └───────────────────────────────────┴──────────────────────────────────────┘   │  │
+│  │                                                                                   │  │
+│  │  CloudWatch Delivery Logs (opt-in, per protocol):                                │  │
+│  │  ┌──────────────────────────────────────────────────────────────────────┐       │  │
+│  │  │  Logs every delivery attempt with:                                   │       │  │
+│  │  │  • providerResponse (what the endpoint returned)                     │       │  │
+│  │  │  • dwellTimeMs (how long SNS held the message before delivery)      │       │  │
+│  │  │  • statusCode (HTTP status or error code)                           │       │  │
+│  │  │  • timestamp, messageId, subscriptionArn                            │       │  │
+│  │  │                                                                      │       │  │
+│  │  │  ⚠ dwellTimeMs is the ONLY way to detect internal delivery delays  │       │  │
+│  │  │  (like the throttlePolicy 65-day incident — metrics showed SUCCESS  │       │  │
+│  │  │   but dwellTimeMs would have revealed the 30+ min delay)            │       │  │
+│  │  └──────────────────────────────────────────────────────────────────────┘       │  │
+│  │                                                                                   │  │
+│  │  CloudTrail (API audit):                                                         │  │
+│  │  ┌──────────────────────────────────────────────────────────────────────┐       │  │
+│  │  │  Logs management events: CreateTopic, Subscribe, SetTopicAttributes │       │  │
+│  │  │  Does NOT log Publish calls by default (data event — opt-in)       │       │  │
+│  │  │  Enable data events for compliance-heavy workloads                 │       │  │
+│  │  └──────────────────────────────────────────────────────────────────────┘       │  │
+│  │                                                                                   │  │
+│  └─────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                          │
+│          STANDARD TOPIC vs FIFO TOPIC — INTERNAL DIFFERENCES                             │
+│                                                                                          │
+│  ┌───────────────────────────────────┐  ┌───────────────────────────────────┐            │
+│  │  STANDARD TOPIC                    │  │  FIFO TOPIC (.fifo suffix)        │            │
+│  │                                    │  │                                    │            │
+│  │  ┌─────────────────────────────┐  │  │  ┌─────────────────────────────┐  │            │
+│  │  │ Message arrives             │  │  │  │ Message arrives             │  │            │
+│  │  │         │                   │  │  │  │         │                   │  │            │
+│  │  │         ▼                   │  │  │  │         ▼                   │  │            │
+│  │  │  Validate + Assign          │  │  │  │  Validate + Assign          │  │            │
+│  │  │  MessageId (UUID)           │  │  │  │  MessageId (UUID)           │  │            │
+│  │  │         │                   │  │  │  │         │                   │  │            │
+│  │  │         │                   │  │  │  │         ▼                   │  │            │
+│  │  │         │                   │  │  │  │  ┌───────────────────┐     │  │            │
+│  │  │         │   (no dedup)      │  │  │  │  │ DEDUP CHECK       │     │  │            │
+│  │  │         │   (no ordering)   │  │  │  │  │ Is dedup_id in    │     │  │            │
+│  │  │         │                   │  │  │  │  │ 5-min cache?      │     │  │            │
+│  │  │         │                   │  │  │  │  │                   │     │  │            │
+│  │  │         │                   │  │  │  │  │ YES → return 200  │     │  │            │
+│  │  │         │                   │  │  │  │  │ (don't deliver)   │     │  │            │
+│  │  │         │                   │  │  │  │  │                   │     │  │            │
+│  │  │         │                   │  │  │  │  │ NO → continue     │     │  │            │
+│  │  │         │                   │  │  │  │  └────────┬──────────┘     │  │            │
+│  │  │         │                   │  │  │  │           │                │  │            │
+│  │  │         │                   │  │  │  │           ▼                │  │            │
+│  │  │         │                   │  │  │  │  ┌───────────────────┐     │  │            │
+│  │  │         │                   │  │  │  │  │ SEQUENCE ASSIGN    │     │  │            │
+│  │  │         │                   │  │  │  │  │ Atomic increment   │     │  │            │
+│  │  │         │                   │  │  │  │  │ per MessageGroupId │     │  │            │
+│  │  │         │                   │  │  │  │  │ seq-00000047 →     │     │  │            │
+│  │  │         │                   │  │  │  │  │ seq-00000048       │     │  │            │
+│  │  │         │                   │  │  │  │  └────────┬──────────┘     │  │            │
+│  │  │         │                   │  │  │  │           │                │  │            │
+│  │  │         ▼                   │  │  │  │           ▼                │  │            │
+│  │  │  ┌───────────────────┐     │  │  │  │  ┌───────────────────┐     │  │            │
+│  │  │  │ FILTER + DELIVER   │     │  │  │  │  │ FILTER + DELIVER   │     │  │            │
+│  │  │  │                   │     │  │  │  │  │                   │     │  │            │
+│  │  │  │ Best-effort order │     │  │  │  │  │ Strict order per  │     │  │            │
+│  │  │  │ (no guarantee)    │     │  │  │  │  │ MessageGroupId    │     │  │            │
+│  │  │  │                   │     │  │  │  │  │                   │     │  │            │
+│  │  │  │ At-least-once     │     │  │  │  │  │ Exactly-once      │     │  │            │
+│  │  │  │ (may duplicate)   │     │  │  │  │  │ (to FIFO SQS)     │     │  │            │
+│  │  │  │                   │     │  │  │  │  │                   │     │  │            │
+│  │  │  │ 30,000 msg/s      │     │  │  │  │  │ 300 msg/s/group   │     │  │            │
+│  │  │  │                   │     │  │  │  │  │ 3,000 msg/s/topic │     │  │            │
+│  │  │  └───────────────────┘     │  │  │  │  └───────────────────┘     │  │            │
+│  │  │                            │  │  │  │                            │  │            │
+│  │  └─────────────────────────────┘  │  │  └─────────────────────────────┘  │            │
+│  │                                    │  │                                    │            │
+│  │  INTERNAL COMPONENTS:              │  │  INTERNAL COMPONENTS:              │            │
+│  │  • API Frontend     ✓             │  │  • API Frontend          ✓        │            │
+│  │  • Metadata Store   ✓             │  │  • Metadata Store        ✓        │            │
+│  │  • Filter Engine    ✓             │  │  • Filter Engine         ✓        │            │
+│  │  • Delivery Engine  ✓             │  │  • Delivery Engine       ✓        │            │
+│  │  • Retry/DLQ Engine ✓             │  │  • Retry/DLQ Engine      ✓        │            │
+│  │  • Dedup Cache      ✗ (none)      │  │  • Dedup Cache           ✓ (5 min)│            │
+│  │  • Sequence Counter ✗ (none)      │  │  • Sequence Counter      ✓        │            │
+│  │  • Group Registry   ✗ (none)      │  │  • Group Registry        ✓        │            │
+│  │                                    │  │                                    │            │
+│  └───────────────────────────────────┘  └───────────────────────────────────┘            │
+│                                                                                          │
+│  FIFO has 3 EXTRA internal components that Standard doesn't have.                       │
+│  These add overhead → that's why FIFO throughput is 10x lower.                          │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## 3. Message Lifecycle — Publish to Delivery
@@ -694,6 +1192,103 @@ Message filtering is one of the most underrated and most-asked-about features of
 │  │  ✓ No network disruptions during delivery acknowledgment      │          │
 │  └────────────────────────────────────────────────────────────────┘          │
 │                                                                              │
+│  CONDITION 1 EXPLAINED: Queue exists + correct permissions                   │
+│  ┌────────────────────────────────────────────────────────────────┐          │
+│  │  If the SQS queue is deleted, or its resource policy doesn't   │          │
+│  │  allow sqs:SendMessage from the topic ARN — SNS tries to       │          │
+│  │  deliver, SQS rejects with 403, and the message is GONE.       │          │
+│  │                                                                │          │
+│  │  SNS FIFO ──deliver──► SQS FIFO (deleted / wrong policy)      │          │
+│  │                            │                                   │          │
+│  │                            └─► 403 Forbidden                   │          │
+│  │                                → "client-side error"           │          │
+│  │                                → ZERO retries for client errors│          │
+│  │                                → message LOST permanently      │          │
+│  │                                                                │          │
+│  │  This is NOT a transient failure. SNS treats permission errors │          │
+│  │  as YOUR fault and does not retry.                             │          │
+│  └────────────────────────────────────────────────────────────────┘          │
+│                                                                              │
+│  CONDITION 2 EXPLAINED: Delete before visibility timeout                     │
+│  ┌────────────────────────────────────────────────────────────────┐          │
+│  │  After SQS delivers a message to your consumer, it becomes     │          │
+│  │  INVISIBLE for the visibility timeout (default 30s). If your   │          │
+│  │  consumer doesn't call DeleteMessage before timeout expires:   │          │
+│  │                                                                │          │
+│  │  SQS delivers to Consumer A → timeout starts (30s)            │          │
+│  │                                   │                            │          │
+│  │  Consumer A is slow (takes 45s)   │                            │          │
+│  │                                   ▼                            │          │
+│  │                             Timeout expires at 30s             │          │
+│  │                                   │                            │          │
+│  │                                   ▼                            │          │
+│  │                        Message becomes VISIBLE again           │          │
+│  │                                   │                            │          │
+│  │                                   ▼                            │          │
+│  │                   Consumer B picks it up → DUPLICATE!          │          │
+│  │                                                                │          │
+│  │  Now processed TWICE — no longer exactly-once.                 │          │
+│  │  Fix: set visibility timeout > max processing time,            │          │
+│  │  or call ChangeMessageVisibility to extend it mid-processing.  │          │
+│  └────────────────────────────────────────────────────────────────┘          │
+│                                                                              │
+│  CONDITION 3 EXPLAINED: No filtering (the sneaky interview gotcha)           │
+│  ┌────────────────────────────────────────────────────────────────┐          │
+│  │  WITHOUT filter:                                               │          │
+│  │    SNS FIFO → SQS FIFO                                        │          │
+│  │    Delivery: exactly-once ✓                                    │          │
+│  │                                                                │          │
+│  │  WITH filter:                                                  │          │
+│  │    SNS FIFO → [Filter: event_type=order] → SQS FIFO           │          │
+│  │    Delivery: AT-MOST-ONCE ⚠                                   │          │
+│  │                                                                │          │
+│  │  "At-most-once" means:                                         │          │
+│  │    • Message might be delivered ONCE (good)                    │          │
+│  │    • Message might be delivered ZERO times (lost!)             │          │
+│  │    • But never duplicated                                      │          │
+│  │                                                                │          │
+│  │  WHY? Filtering adds an evaluation step. If that evaluation    │          │
+│  │  fails transiently (internal SNS error), SNS does NOT retry    │          │
+│  │  (to preserve the "no duplicates" guarantee in FIFO).          │          │
+│  │  So the message is silently dropped.                           │          │
+│  │                                                                │          │
+│  │  SNS chose "no duplicates" OVER "guaranteed delivery"          │          │
+│  │  when filtering is enabled on FIFO subscriptions.              │          │
+│  └────────────────────────────────────────────────────────────────┘          │
+│                                                                              │
+│  CONDITION 4 EXPLAINED: No network disruptions (two generals problem)        │
+│  ┌────────────────────────────────────────────────────────────────┐          │
+│  │  SNS FIFO ──deliver──► SQS FIFO ──ACK──► SNS                  │          │
+│  │                                     │                          │          │
+│  │                               Network blip                     │          │
+│  │                                     │                          │          │
+│  │                                     ▼                          │          │
+│  │                          ACK lost in transit                   │          │
+│  │                                     │                          │          │
+│  │                                     ▼                          │          │
+│  │                 SNS thinks delivery failed → retries           │          │
+│  │                 SQS already has the message → DUPLICATE!       │          │
+│  │                                                                │          │
+│  │  This is the classic two generals problem from distributed     │          │
+│  │  systems. SNS sent it, SQS got it, but the ACK was lost.      │          │
+│  │  SNS retries, now SQS has it twice.                            │          │
+│  │                                                                │          │
+│  │  In practice this is RARE, but it means exactly-once is a      │          │
+│  │  best-effort guarantee, not an absolute mathematical one.      │          │
+│  └────────────────────────────────────────────────────────────────┘          │
+│                                                                              │
+│  THE SENIOR ENGINEER ANSWER:                                                 │
+│  ┌────────────────────────────────────────────────────────────────┐          │
+│  │  "Even with FIFO topics meeting all four conditions, I'd       │          │
+│  │   STILL design my consumers to be idempotent — because         │          │
+│  │   distributed exactly-once is a theoretical ideal, not a       │          │
+│  │   production certainty. Idempotency keys (MessageId or         │          │
+│  │   business key in DynamoDB/Redis with TTL) cost almost          │          │
+│  │   nothing and make the system bulletproof."                    │          │
+│  │                                                                │          │
+│  │  This answer separates senior from mid-level in interviews.   │          │
+│  └────────────────────────────────────────────────────────────────┘          │
+│                                                                              │
 │  Deduplication:                                                              │
 │  ┌────────────────────────────────────────────────────────────────┐          │
 │  │  Method 1: Explicit dedup ID                                   │          │
@@ -713,6 +1308,140 @@ Message filtering is one of the most underrated and most-asked-about features of
 │  ANSWER: Only FIFO topics, only to SQS FIFO queues, only without            │
 │  filtering, and the consumer must handle its side correctly.                 │
 │  Standard topics are ALWAYS at-least-once.                                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Deep Dive: The 5-Minute Dedup Window
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│         SNS FIFO — 5-MINUTE DEDUPLICATION WINDOW EXPLAINED                   │
+│                                                                              │
+│  WHAT IT IS:                                                                 │
+│  When you publish to a FIFO topic, you provide a MessageDeduplicationId     │
+│  (or SNS auto-generates one from the body hash if content-based dedup       │
+│  is enabled). SNS stores that ID in an internal cache. For the NEXT         │
+│  5 MINUTES, any message with the SAME dedup ID is silently discarded —     │
+│  SNS returns 200 OK to the publisher, but never delivers it.                │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  TIMELINE EXAMPLE:                                                           │
+│                                                                              │
+│  T=0:00  Publish(msg, dedup_id="pay-R-12345-attempt-1")                     │
+│          → SNS accepts ✓                                                    │
+│          → Delivers to all subscribers ✓                                    │
+│          → Stores "pay-R-12345-attempt-1" in dedup cache                    │
+│                                                                              │
+│  T=0:05  Publish(msg, dedup_id="pay-R-12345-attempt-1")  ← network retry   │
+│          → SNS finds dedup ID in cache                                      │
+│          → Returns 200 OK (looks successful to publisher)                   │
+│          → Does NOT deliver. Silently dropped. ✓                            │
+│                                                                              │
+│  T=2:30  Publish(msg, dedup_id="pay-R-12345-attempt-1")  ← app retry       │
+│          → Still within 5-min window → silently dropped ✓                   │
+│                                                                              │
+│  T=5:01  Publish(msg, dedup_id="pay-R-12345-attempt-1")                     │
+│          → 5-min window EXPIRED → dedup ID evicted from cache              │
+│          → SNS treats this as a NEW message                                 │
+│          → DELIVERS AGAIN ✗  ← THIS IS THE TRAP                           │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────┐                │
+│  │                                                         │                │
+│  │   0 min          2.5 min          5 min         7 min   │                │
+│  │   │───────────────│───────────────│──────────────│       │                │
+│  │   │◄── SAFE ZONE (duplicates dropped) ──►│               │                │
+│  │   │                                      │               │                │
+│  │   │                                      │◄── DANGER ──►││                │
+│  │   │                                      │ (same dedup   ││                │
+│  │   │                                      │  ID treated   ││                │
+│  │   │                                      │  as NEW msg)  ││                │
+│  │                                                         │                │
+│  └─────────────────────────────────────────────────────────┘                │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  WHY EXACTLY 5 MINUTES? (AWS's trade-off)                                   │
+│                                                                              │
+│  ┌──────────────┬───────────────────────────────────────────────────┐       │
+│  │ Too short    │ 30 seconds: Network retries or slow producers     │       │
+│  │ (bad)        │ could re-publish after window closes → duplicates │       │
+│  ├──────────────┼───────────────────────────────────────────────────┤       │
+│  │ Too long     │ 1 hour: AWS must hold millions of dedup IDs in   │       │
+│  │ (bad)        │ memory across all customers → massive memory cost │       │
+│  ├──────────────┼───────────────────────────────────────────────────┤       │
+│  │ 5 minutes    │ Covers 99.9% of retry scenarios (most retries    │       │
+│  │ (sweet spot) │ happen within seconds). Manageable memory cost.  │       │
+│  └──────────────┴───────────────────────────────────────────────────┘       │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  WHAT'S SAFE vs WHAT'S NOT:                                                  │
+│                                                                              │
+│  ✓ SAFE: Publisher crashes, restarts, retries within 5 min                  │
+│          → Dedup window catches it. No duplicate delivery.                  │
+│                                                                              │
+│  ✓ SAFE: SDK auto-retries on timeout (happens in milliseconds)              │
+│          → Well within window. No duplicate delivery.                       │
+│                                                                              │
+│  ✗ UNSAFE: App bug re-publishes the same event 6 min later                  │
+│            with the same dedup ID                                           │
+│            → Window expired. SNS delivers it again.                         │
+│                                                                              │
+│  ✗ UNSAFE: Cron job runs every 10 min, replays "unconfirmed"               │
+│            events with same dedup IDs                                       │
+│            → Anything older than 5 min will duplicate.                      │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  THE PRODUCTION TRAP:                                                        │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────┐         │
+│  │  1. Publisher publishes payment_processed for ride R-12345     │         │
+│  │     dedup_id = "pay-R-12345-v1"                               │         │
+│  │                                                               │         │
+│  │  2. Consumer processes it but crashes BEFORE acknowledging    │         │
+│  │     (message goes back to SQS queue)                          │         │
+│  │                                                               │         │
+│  │  3. 8 minutes later, your "retry orchestrator" sees the       │         │
+│  │     event was never confirmed                                 │         │
+│  │                                                               │         │
+│  │  4. Re-publishes with same dedup_id = "pay-R-12345-v1"       │         │
+│  │                                                               │         │
+│  │  5. SNS: "Never seen this before" (5-min window expired)     │         │
+│  │     → Delivers AGAIN → Driver gets paid TWICE                │         │
+│  │                                                               │         │
+│  │  FIX: Your CONSUMER must be idempotent.                       │         │
+│  │  The dedup window protects against publisher-level retries,   │         │
+│  │  NOT against application-level replays after 5 minutes.       │         │
+│  └────────────────────────────────────────────────────────────────┘         │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  BEST PRACTICES:                                                             │
+│                                                                              │
+│  1. ALWAYS make consumers idempotent (don't rely solely on dedup window)    │
+│     → Store processed event IDs in DynamoDB/Redis/Postgres                  │
+│     → Check before processing: "Have I seen pay-R-12345-v1 before?"        │
+│                                                                              │
+│  2. Use versioned dedup IDs: "pay-R-12345-v1", "pay-R-12345-v2"           │
+│     → If you genuinely need to re-publish, increment the version           │
+│     → This bypasses the window intentionally                               │
+│                                                                              │
+│  3. Never re-publish with same dedup ID after 5 minutes                     │
+│     → If your retry logic may exceed 5 min, handle retries at              │
+│       the CONSUMER level (SQS visibility timeout), not publisher           │
+│                                                                              │
+│  4. For replay/reprocessing scenarios, use a DIFFERENT dedup ID             │
+│     → "pay-R-12345-v1-replay-20260415" makes the intent clear             │
+│     → But the consumer must still be idempotent                            │
+│                                                                              │
+│  INTERVIEW SUMMARY:                                                          │
+│  "The 5-minute dedup window handles infrastructure duplicates —             │
+│   network retries, SDK retries, publisher failovers. It does NOT            │
+│   replace consumer-side idempotency. Think of it as a first line            │
+│   of defense, not the only line."                                           │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -842,6 +1571,89 @@ Message filtering is one of the most underrated and most-asked-about features of
 │  • FIFO topic subscription → FIFO SQS queue as DLQ                           │
 │  • DLQ needs sqs:SendMessage permission for sns.amazonaws.com                │
 │  • Each subscription has its OWN DLQ (not shared per topic)                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### SNS DLQ vs SQS Redrive DLQ — Two Different Things
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│           SNS DLQ vs SQS DLQ — COMMON INTERVIEW CONFUSION                    │
+│                                                                              │
+│  These are TWO separate DLQ mechanisms at different layers:                   │
+│                                                                              │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐         │
+│  │   SNS SUBSCRIPTION DLQ       │  │   SQS REDRIVE DLQ            │         │
+│  ├──────────────────────────────┤  ├──────────────────────────────┤         │
+│  │ Trigger: SNS can't DELIVER   │  │ Trigger: Consumer fails to   │         │
+│  │   to the subscriber endpoint │  │   PROCESS a message N times  │         │
+│  │                              │  │                              │         │
+│  │ Who sends: SNS service       │  │ Who sends: SQS service       │         │
+│  │                              │  │                              │         │
+│  │ Attached to: SNS subscription│  │ Attached to: SQS queue       │         │
+│  │                              │  │                              │         │
+│  │ Catches: endpoint down,      │  │ Catches: poison messages,    │         │
+│  │   permission errors,         │  │   Lambda bugs, timeouts,     │         │
+│  │   network failures           │  │   unprocessable data         │         │
+│  └──────────────────────────────┘  └──────────────────────────────┘         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### The Two-Layer DLQ Pattern (Production Best Practice)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│         TWO-LAYER DLQ = ZERO MESSAGE LOSS                                    │
+│                                                                              │
+│  In a full SNS → SQS → Lambda architecture, you want BOTH DLQs:            │
+│                                                                              │
+│                                                                              │
+│  Publisher ──→ [SNS Topic]                                                   │
+│                    │                                                         │
+│                    ▼                                                         │
+│  LAYER 1:   [SNS Subscription]                                               │
+│                    │                                                         │
+│              Delivery fails                                                  │
+│              after all retries?                                              │
+│                    │                                                         │
+│              YES ──┼──────────────► [SNS DLQ] (SQS queue)                   │
+│                    │                  Catches: SQS queue down,               │
+│                    │                  permission errors, throttling           │
+│              NO (delivered OK)                                               │
+│                    │                                                         │
+│                    ▼                                                         │
+│  LAYER 2:   [SQS Queue]                                                     │
+│                    │                                                         │
+│              Consumer fails                                                  │
+│              to process 5x?                                                  │
+│                    │                                                         │
+│              YES ──┼──────────────► [SQS Redrive DLQ] (SQS queue)           │
+│                    │                  Catches: poison messages,               │
+│                    │                  Lambda bugs, bad data                   │
+│              NO (processed OK)                                               │
+│                    │                                                         │
+│                    ▼                                                         │
+│             [Lambda Consumer]                                                │
+│                    │                                                         │
+│                    ▼                                                         │
+│               Success!                                                       │
+│                                                                              │
+│                                                                              │
+│  WITHOUT two-layer DLQ:                                                      │
+│    • No SNS DLQ → delivery failure = message gone forever                   │
+│    • No SQS DLQ → poison message = infinite retry loop                      │
+│                    (Lambda invoked forever, cost explodes)                   │
+│                                                                              │
+│  WITH two-layer DLQ:                                                         │
+│    • Every failure is captured somewhere                                     │
+│    • Both DLQs have CloudWatch alarms (depth > 0 → alert)                  │
+│    • Ops team can inspect, fix, and replay from either DLQ                  │
+│    • ZERO messages lost, ZERO infinite loops                                │
+│                                                                              │
+│  This is the production-grade pattern. Non-negotiable for any               │
+│  system handling money, orders, or critical business events.                │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1240,6 +2052,566 @@ This is the most important pattern in AWS messaging. If you remember ONE thing, 
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Scenario 5: Ride-Hailing Event Architecture (Uber/Lyft/Ola Pattern)
+
+This is the **most interview-relevant** SNS scenario because it forces you to reason about
+topic design, filtering, FIFO vs Standard, failure handling, and scale math — all in one system.
+
+#### 5a. The Event Catalog
+
+Every ride generates a chain of domain events. Each event is a fact about something that happened:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     RIDE LIFECYCLE — EVENT CHAIN                              │
+│                                                                              │
+│  ┌─────────────┐   ┌────────────────┐   ┌──────────────┐   ┌────────────┐  │
+│  │   Rider      │   │   Matching     │   │   Driver     │   │  Billing   │  │
+│  │   App        │   │   Engine       │   │   App        │   │  Service   │  │
+│  └──────┬───────┘   └───────┬────────┘   └──────┬───────┘   └─────┬──────┘  │
+│         │                   │                    │                 │         │
+│         ▼                   ▼                    ▼                 ▼         │
+│   ride_requested     driver_assigned       ride_started     payment_processed│
+│                                            ride_completed   payment_failed  │
+│                                                             refund_issued   │
+│         │                                        │                          │
+│         ▼                                        ▼                          │
+│   ┌──────────┐                             ┌───────────┐                    │
+│   │  Rider   │                             │  Rating   │                    │
+│   │  App     │                             │  Service  │                    │
+│   └──────────┘                             └─────┬─────┘                    │
+│                                                  │                          │
+│                                                  ▼                          │
+│                                           rating_submitted                  │
+│                                           driver_status_changed             │
+│                                                                              │
+│  TOTAL: 9 distinct event types across 3 domains                             │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │  DOMAIN         │  EVENTS                                    │           │
+│  ├──────────────────┼───────────────────────────────────────────┤           │
+│  │  Ride Lifecycle  │  ride_requested, driver_assigned,          │           │
+│  │                  │  ride_started, ride_completed              │           │
+│  ├──────────────────┼───────────────────────────────────────────┤           │
+│  │  Payment         │  payment_processed, payment_failed,        │           │
+│  │                  │  refund_issued                              │           │
+│  ├──────────────────┼───────────────────────────────────────────┤           │
+│  │  User Activity   │  rating_submitted, driver_status_changed   │           │
+│  └──────────────────┴───────────────────────────────────────────┘           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5b. Topic Design — Domain-Scoped (Not One Mega-Topic)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│              WHY 3 TOPICS, NOT 1?  (THE CRITICAL DESIGN DECISION)            │
+│                                                                              │
+│  ╔══════════════════════════════════════════════════════════════════════╗     │
+│  ║  WRONG: One mega-topic "ride-platform-events"                       ║     │
+│  ║                                                                     ║     │
+│  ║    ride_requested ──┐                                               ║     │
+│  ║    driver_assigned ─┤                                               ║     │
+│  ║    ride_started ────┤                                               ║     │
+│  ║    ride_completed ──┼──→  [SNS: ride-platform-events] ──→ 10+ subs ║     │
+│  ║    payment_processed┤          30K msgs/sec shared                  ║     │
+│  ║    payment_failed ──┤          throttle across ALL                  ║     │
+│  ║    refund_issued ───┤          event types                          ║     │
+│  ║    rating_submitted ┤                                               ║     │
+│  ║    driver_status ───┘                                               ║     │
+│  ║                                                                     ║     │
+│  ║  PROBLEMS:                                                          ║     │
+│  ║  1. Analytics spike (ride_requested burst during surge)             ║     │
+│  ║     throttles payment delivery → receipts delayed                   ║     │
+│  ║  2. One team deploys bad filter → breaks ALL subscribers            ║     │
+│  ║  3. Can't make payments FIFO without making everything FIFO         ║     │
+│  ║     (FIFO limit: 300 msg/s vs Standard: 30K msg/s)                 ║     │
+│  ║  4. IAM permissions are coarse: publish to topic = publish all      ║     │
+│  ║  5. Single blast radius: topic-level issue = total outage           ║     │
+│  ╚══════════════════════════════════════════════════════════════════════╝     │
+│                                                                              │
+│  ╔══════════════════════════════════════════════════════════════════════╗     │
+│  ║  CORRECT: Domain-scoped topics                                      ║     │
+│  ║                                                                     ║     │
+│  ║    ┌─────────────────────────────────────────────────────────────┐  ║     │
+│  ║    │ ride-lifecycle-events (Standard)                             │  ║     │
+│  ║    │   Owns: ride_requested, driver_assigned,                    │  ║     │
+│  ║    │         ride_started, ride_completed                        │  ║     │
+│  ║    │   Owner team: Ride Platform                                 │  ║     │
+│  ║    │   SLA: best-effort, p99 < 500ms                            │  ║     │
+│  ║    │   Volume: ~48 msgs/sec (4 events × 12 rides/sec)           │  ║     │
+│  ║    └─────────────────────────────────────────────────────────────┘  ║     │
+│  ║                                                                     ║     │
+│  ║    ┌─────────────────────────────────────────────────────────────┐  ║     │
+│  ║    │ payment-events.fifo (FIFO)                                  │  ║     │
+│  ║    │   Owns: payment_processed, payment_failed, refund_issued   │  ║     │
+│  ║    │   Owner team: Payments                                     │  ║     │
+│  ║    │   SLA: exactly-once, strict order per ride                 │  ║     │
+│  ║    │   MessageGroupId: ride_id                                  │  ║     │
+│  ║    │   Volume: ~36 msgs/sec (3 events × 12 rides/sec)          │  ║     │
+│  ║    └─────────────────────────────────────────────────────────────┘  ║     │
+│  ║                                                                     ║     │
+│  ║    ┌─────────────────────────────────────────────────────────────┐  ║     │
+│  ║    │ user-events (Standard)                                      │  ║     │
+│  ║    │   Owns: rating_submitted, driver_status_changed            │  ║     │
+│  ║    │   Owner team: User Experience                              │  ║     │
+│  ║    │   SLA: best-effort, p99 < 2s (non-critical)               │  ║     │
+│  ║    │   Volume: ~24 msgs/sec (2 events × 12 rides/sec)          │  ║     │
+│  ║    └─────────────────────────────────────────────────────────────┘  ║     │
+│  ║                                                                     ║     │
+│  ║  BENEFITS:                                                          ║     │
+│  ║  ✓ Independent scaling (each topic has its own 30K/s limit)        ║     │
+│  ║  ✓ Independent SLAs (payment FIFO, rides Standard)                 ║     │
+│  ║  ✓ Team ownership (Payments team → payment-events IAM only)        ║     │
+│  ║  ✓ Blast radius isolation (payment issue ≠ ride matching issue)    ║     │
+│  ║  ✓ Independent monitoring (CloudWatch alarms per topic)            ║     │
+│  ╚══════════════════════════════════════════════════════════════════════╝     │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5c. Complete Subscription Topology — The Full Fan-Out Map
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│          RIDE-HAILING SNS ARCHITECTURE — FULL SUBSCRIPTION MAP               │
+│                                                                              │
+│  ════════════════════════════════════════════════════════════════════════════ │
+│  TOPIC 1: ride-lifecycle-events (Standard)                                   │
+│  ════════════════════════════════════════════════════════════════════════════ │
+│                                                                              │
+│  Ride Service publishes:                                                     │
+│  {                                                                           │
+│    "Message": {"ride_id":"R-12345", "rider_id":"U-99", ...},                │
+│    "MessageAttributes": {                                                    │
+│      "event_type": {"DataType":"String", "StringValue":"ride_requested"},    │
+│      "city":       {"DataType":"String", "StringValue":"bangalore"},         │
+│      "surge_mult": {"DataType":"Number", "StringValue":"2.1"}               │
+│    }                                                                         │
+│  }                                                                           │
+│                                                                              │
+│                  [SNS: ride-lifecycle-events]                                 │
+│                           │                                                  │
+│         ┌─────────────────┼─────────────────┬──────────────────┐            │
+│         │                 │                 │                  │             │
+│         ▼                 ▼                 ▼                  ▼             │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  ┌──────────────┐      │
+│  │ SQS:         │ │ SQS:         │ │ Lambda:      │  │ SQS:         │      │
+│  │ driver-      │ │ eta-         │ │ push-        │  │ analytics-   │      │
+│  │ matching-    │ │ calculation- │ │ notification │  │ queue        │      │
+│  │ queue        │ │ queue        │ │              │  │              │      │
+│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘  └──────┬───────┘      │
+│         │                │                │                  │              │
+│   FILTER:          FILTER:          FILTER:           NO FILTER             │
+│   event_type =     event_type =     event_type IN     (gets ALL             │
+│   "ride_requested" "driver_assigned" ["driver_assigned" events)             │
+│                                      "ride_started"]                        │
+│         │                │                │                  │              │
+│         ▼                ▼                ▼                  ▼              │
+│   Match nearest    Calculate ETA     Send push to      Stream to           │
+│   available        and update        rider: "Driver     Kinesis →          │
+│   driver using     rider app in      Rahul is on       Redshift for        │
+│   geo index        real-time         the way!"         BI dashboards       │
+│                                                                              │
+│   WHY FILTER?                                                                │
+│   • driver-matching only cares about NEW ride requests                      │
+│   • eta-calculation only needs to trigger when driver IS assigned           │
+│   • push-notification fires on assignment + trip start (2 events)           │
+│   • analytics needs EVERY event for funnel tracking                         │
+│                                                                              │
+│  ════════════════════════════════════════════════════════════════════════════ │
+│  TOPIC 2: payment-events.fifo (FIFO — ordered by ride_id)                   │
+│  ════════════════════════════════════════════════════════════════════════════ │
+│                                                                              │
+│  Payment Service publishes:                                                  │
+│  {                                                                           │
+│    "Message": {"ride_id":"R-12345", "amount":450, "currency":"INR", ...},   │
+│    "MessageAttributes": {                                                    │
+│      "event_type": {"DataType":"String", "StringValue":"payment_processed"},│
+│      "amount":     {"DataType":"Number", "StringValue":"450"},               │
+│      "method":     {"DataType":"String", "StringValue":"upi"}                │
+│    },                                                                        │
+│    "MessageGroupId": "R-12345",                                              │
+│    "MessageDeduplicationId": "pay-R-12345-attempt-1"                         │
+│  }                                                                           │
+│                                                                              │
+│  WHY FIFO FOR PAYMENTS?                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │  Ride R-12345 generates these events IN ORDER:               │           │
+│  │                                                              │           │
+│  │    1. payment_processed (₹450 charged)                       │           │
+│  │    2. payment_failed    (bank declined, reversed)            │           │
+│  │    3. payment_processed (retry succeeds on UPI)              │           │
+│  │                                                              │           │
+│  │  If Standard topic delivers #3 before #2:                    │           │
+│  │    → Driver gets paid for ₹450 TWICE                        │           │
+│  │    → Rider charged ₹450 TWICE                               │           │
+│  │    → Accounting goes haywire                                 │           │
+│  │                                                              │           │
+│  │  FIFO topic with MessageGroupId = ride_id:                   │           │
+│  │    → Events for R-12345 always arrive 1 → 2 → 3             │           │
+│  │    → Events for R-12346 are independent (different group)    │           │
+│  │    → Parallelism across rides, strict order within each ride │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                                                                              │
+│                 [SNS: payment-events.fifo]                                   │
+│                          │                                                   │
+│         ┌────────────────┼────────────────┐                                 │
+│         │                │                │                                  │
+│         ▼                ▼                ▼                                  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                        │
+│  │ SQS (FIFO):  │ │ Lambda:      │ │ SQS (FIFO):  │                        │
+│  │ receipt-     │ │ fraud-       │ │ driver-      │                        │
+│  │ generation-  │ │ detection    │ │ payout-      │                        │
+│  │ queue.fifo   │ │              │ │ queue.fifo   │                        │
+│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘                        │
+│         │                │                │                                  │
+│   NO FILTER        FILTER:          FILTER:                                 │
+│   (all payment     amount >= 200    event_type =                            │
+│    events need                      "payment_processed"                     │
+│    receipts)                                                                 │
+│         │                │                │                                  │
+│         ▼                ▼                ▼                                  │
+│   Generate PDF     Flag high-value   Trigger driver                        │
+│   receipt, email   transactions,     payout settlement                     │
+│   to rider,        check velocity,   to bank account                       │
+│   store in S3      block stolen       (once confirmed                      │
+│                    cards              payment received)                      │
+│                                                                              │
+│   ⚠ FIFO CONSTRAINT: All SQS subscribers MUST also be FIFO queues         │
+│   ⚠ Lambda subscribers on FIFO topics NOT supported as of 2026             │
+│   ⚠ fraud-detection Lambda → must go through SQS FIFO → Lambda trigger    │
+│                                                                              │
+│  ════════════════════════════════════════════════════════════════════════════ │
+│  TOPIC 3: user-events (Standard)                                             │
+│  ════════════════════════════════════════════════════════════════════════════ │
+│                                                                              │
+│                   [SNS: user-events]                                          │
+│                          │                                                   │
+│              ┌───────────┼───────────┐                                      │
+│              │                       │                                       │
+│              ▼                       ▼                                       │
+│  ┌────────────────────┐  ┌────────────────────┐                             │
+│  │ SQS:               │  │ SQS:               │                             │
+│  │ driver-rating-     │  │ gamification-      │                             │
+│  │ queue              │  │ queue              │                             │
+│  └────────┬───────────┘  └────────┬───────────┘                             │
+│           │                       │                                          │
+│     FILTER:                 FILTER:                                          │
+│     event_type =            event_type =                                    │
+│     "rating_submitted"      "rating_submitted"                              │
+│                             AND stars >= 5                                   │
+│           │                       │                                          │
+│           ▼                       ▼                                          │
+│     Update driver            Award badge,                                   │
+│     rating average,          trigger bonus                                  │
+│     flag if < 4.0            payout for                                     │
+│     for training             5-star streak                                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5d. Failure Handling — DLQ Strategy Per Subscription
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│              DLQ STRATEGY — PRIORITY-BASED FAILURE HANDLING                   │
+│                                                                              │
+│  NOT all failures are equal. Payment failures need humans. Analytics         │
+│  failures can wait until Monday.                                             │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────┐       │
+│  │                                                                  │       │
+│  │  TIER 1: CRITICAL (Payment DLQs) — PagerDuty alarm in 1 min    │       │
+│  │  ────────────────────────────────────────────────────────────    │       │
+│  │                                                                  │       │
+│  │  payment-events.fifo                                             │       │
+│  │       │                                                          │       │
+│  │       ├──→ receipt-generation-queue.fifo                         │       │
+│  │       │         │                                                │       │
+│  │       │         └──→ DLQ: receipt-dlq.fifo                      │       │
+│  │       │               • Max receives: 3 (fail fast)             │       │
+│  │       │               • Alarm: ≥1 message → PagerDuty (P1)     │       │
+│  │       │               • Action: On-call reviews within 15 min   │       │
+│  │       │               • Retention: 14 days                      │       │
+│  │       │                                                          │       │
+│  │       ├──→ fraud-detection-queue.fifo                            │       │
+│  │       │         │                                                │       │
+│  │       │         └──→ DLQ: fraud-dlq.fifo                        │       │
+│  │       │               • Max receives: 5 (retries help here)     │       │
+│  │       │               • Alarm: ≥1 message → PagerDuty (P1)     │       │
+│  │       │               • Missed fraud check = potential loss      │       │
+│  │       │                                                          │       │
+│  │       └──→ driver-payout-queue.fifo                              │       │
+│  │                 │                                                │       │
+│  │                 └──→ DLQ: payout-dlq.fifo                       │       │
+│  │                       • Max receives: 3                         │       │
+│  │                       • Alarm: ≥1 message → PagerDuty (P1)     │       │
+│  │                       • Driver not paid = support escalation     │       │
+│  │                                                                  │       │
+│  ├──────────────────────────────────────────────────────────────────┤       │
+│  │                                                                  │       │
+│  │  TIER 2: IMPORTANT (Ride DLQs) — Slack alert, fix within 1 hr  │       │
+│  │  ────────────────────────────────────────────────────────────    │       │
+│  │                                                                  │       │
+│  │  ride-lifecycle-events                                           │       │
+│  │       │                                                          │       │
+│  │       ├──→ driver-matching-queue                                 │       │
+│  │       │         │                                                │       │
+│  │       │         └──→ DLQ: matching-dlq                          │       │
+│  │       │               • Max receives: 3                         │       │
+│  │       │               • Alarm: ≥5 msgs → Slack #ride-ops (P2)  │       │
+│  │       │               • Impact: rider waits longer              │       │
+│  │       │                                                          │       │
+│  │       ├──→ eta-calculation-queue                                 │       │
+│  │       │         │                                                │       │
+│  │       │         └──→ DLQ: eta-dlq                               │       │
+│  │       │               • Max receives: 5                         │       │
+│  │       │               • Alarm: ≥10 msgs → Slack (P3)           │       │
+│  │       │               • Impact: stale ETA, bad UX               │       │
+│  │       │                                                          │       │
+│  │       └──→ push-notification (Lambda)                            │       │
+│  │                 │                                                │       │
+│  │                 └──→ SNS Subscription DLQ: push-notif-dlq       │       │
+│  │                       • SNS-level DLQ (not SQS redrive)         │       │
+│  │                       • Catches Lambda throttling/errors         │       │
+│  │                       • Alarm: ≥20 msgs → Slack (P3)           │       │
+│  │                       • Impact: rider doesn't get push notif    │       │
+│  │                                                                  │       │
+│  ├──────────────────────────────────────────────────────────────────┤       │
+│  │                                                                  │       │
+│  │  TIER 3: LOW PRIORITY (Analytics DLQ) — Replay on Monday       │       │
+│  │  ────────────────────────────────────────────────────────────    │       │
+│  │                                                                  │       │
+│  │  analytics-queue                                                 │       │
+│  │       │                                                          │       │
+│  │       └──→ DLQ: analytics-dlq                                   │       │
+│  │             • Max receives: 10 (many retries, low urgency)      │       │
+│  │             • Alarm: ≥1000 msgs → Slack #data-eng (P4)         │       │
+│  │             • Action: Batch replay via script, no rush           │       │
+│  │             • Retention: 14 days                                │       │
+│  │             • Impact: slightly stale dashboards                 │       │
+│  │                                                                  │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
+│                                                                              │
+│  KEY INSIGHT: DLQ alarm thresholds reflect business impact,                 │
+│  not technical severity. 1 failed payment > 1000 failed analytics events.   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5e. Scale Math — From Startup to Uber
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                  SCALE MATH — WILL SNS HANDLE THIS?                          │
+│                                                                              │
+│  STEP 1: Estimate event volume from rides/day                                │
+│  ─────────────────────────────────────────────                               │
+│                                                                              │
+│  ┌────────────────┬────────────┬─────────────┬─────────────────────────────┐│
+│  │ Scale          │ Rides/day  │ Events/sec  │ SNS Headroom                ││
+│  │                │            │ (9 events   │ (Standard: 30K msg/s)       ││
+│  │                │            │  per ride)  │ (FIFO: 300 msg/s/group,    ││
+│  │                │            │             │  3K msg/s/topic)            ││
+│  ├────────────────┼────────────┼─────────────┼─────────────────────────────┤│
+│  │ Early startup  │    1K      │     0.1     │ 300,000x headroom          ││
+│  │ Growing        │   100K     │     10      │ 3,000x headroom            ││
+│  │ Mid-scale      │    1M      │    104      │ 288x headroom              ││
+│  │ Ola/Lyft       │    5M      │    520      │ 57x headroom               ││
+│  │ Uber (global)  │   25M      │  2,604      │ 11x headroom               ││
+│  │ Uber (peak)    │   25M      │  ~8,000*    │ 3.7x headroom              ││
+│  └────────────────┴────────────┴─────────────┴─────────────────────────────┘│
+│                                                                              │
+│  * Peak = 3x average (New Year's Eve, surge events)                         │
+│                                                                              │
+│  MATH BREAKDOWN (1M rides/day example):                                      │
+│                                                                              │
+│    1,000,000 rides/day ÷ 86,400 sec/day = 11.57 rides/sec                   │
+│    11.57 rides/sec × 9 events/ride = 104.17 events/sec total                │
+│                                                                              │
+│    Per topic:                                                                │
+│    • ride-lifecycle-events: 11.57 × 4 = 46.3 msg/s  (Standard: fine)       │
+│    • payment-events.fifo:  11.57 × 3 = 34.7 msg/s  (FIFO: fine)           │
+│    • user-events:          11.57 × 2 = 23.1 msg/s  (Standard: fine)       │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  STEP 2: When does SNS become the bottleneck?                                │
+│  ─────────────────────────────────────────────                               │
+│                                                                              │
+│  Standard topic limit:  30,000 msg/s → reached at ~280M rides/day           │
+│  FIFO topic limit:       3,000 msg/s → reached at ~22M rides/day            │
+│  FIFO per-group limit:     300 msg/s → reached at ~8.6M rides/day           │
+│                             (if ONE ride_id generates 300 events/sec        │
+│                              which is impossible — a ride has ~3 payments)  │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │  VERDICT:                                                    │           │
+│  │                                                              │           │
+│  │  • For 99% of ride-hailing companies: SNS is MORE than      │           │
+│  │    enough. You'll hit database limits long before SNS.       │           │
+│  │                                                              │           │
+│  │  • FIFO topic limit (3K msg/s) is the first real ceiling.   │           │
+│  │    At Uber's scale, payment events alone would hit this.    │           │
+│  │                                                              │           │
+│  │  • At Uber scale (25M rides/day): SNS Standard is fine,     │           │
+│  │    but FIFO topics need sharding:                            │           │
+│  │    → payment-events-shard-01.fifo through shard-10.fifo     │           │
+│  │    → Route by ride_id hash: ride_id % 10 → shard number    │           │
+│  │    → Each shard handles ~260 msg/s (well under 3K limit)   │           │
+│  │                                                              │           │
+│  │  • Beyond Uber scale: Use Kafka (no publish throughput cap)  │           │
+│  │    This is exactly why Uber uses Kafka internally, not SNS  │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  STEP 3: Cost estimate                                                       │
+│  ─────────────────────                                                       │
+│                                                                              │
+│  SNS pricing: $0.50 per 1M publishes (first 1M free/month)                  │
+│  SNS → SQS delivery: FREE                                                   │
+│  SNS → Lambda delivery: FREE                                                │
+│                                                                              │
+│  At 1M rides/day:                                                            │
+│    9M events/day × 30 days = 270M publishes/month                           │
+│    Cost = 270 × $0.50 = $135/month  (extremely cheap)                       │
+│                                                                              │
+│  At 25M rides/day (Uber):                                                    │
+│    6.75B publishes/month                                                     │
+│    Cost = 6,750 × $0.50 = $3,375/month                                     │
+│    (still cheap compared to Kafka cluster costs)                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5f. Full System Diagram — Everything Together
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│           RIDE-HAILING EVENT ARCHITECTURE — COMPLETE PICTURE                 │
+│                                                                              │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐               │
+│  │  Rider    │  │  Matching │  │  Driver   │  │  Payment  │               │
+│  │  App      │  │  Engine   │  │  App      │  │  Service  │               │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘               │
+│        │              │              │              │                        │
+│        │  ride_       │ driver_      │ ride_started │ payment_              │
+│        │  requested   │ assigned     │ ride_completed processed             │
+│        │              │              │              │ payment_failed         │
+│        ▼              ▼              ▼              ▼                        │
+│  ┌────────────────────────────┐  ┌────────────────────────────┐            │
+│  │  ride-lifecycle-events     │  │  payment-events.fifo       │            │
+│  │  (Standard Topic)          │  │  (FIFO Topic)              │            │
+│  │                            │  │  GroupId = ride_id          │            │
+│  └────┬───┬────┬────┬────────┘  └────┬──────┬──────┬─────────┘            │
+│       │   │    │    │                │      │      │                       │
+│       │   │    │    │                │      │      │                       │
+│       │   │    │    │    ┌───────────┘      │      │                       │
+│       │   │    │    │    │    ┌─────────────┘      │                       │
+│       │   │    │    │    │    │    ┌───────────────┘                       │
+│       ▼   ▼    ▼    ▼    ▼    ▼    ▼                                       │
+│      ┌─┐ ┌─┐ ┌──┐ ┌─┐ ┌──┐ ┌──┐ ┌──┐                                    │
+│      │D│ │E│ │PN│ │A│ │R │ │F │ │DP│                                     │
+│      │M│ │C│ │  │ │N│ │G │ │D │ │  │                                     │
+│      │Q│ │Q│ │λ │ │Q│ │Q │ │λ │ │Q │                                     │
+│      └┬┘ └┬┘ └┬─┘ └┬┘ └┬─┘ └┬─┘ └┬─┘                                    │
+│       │   │   │    │   │    │    │                                         │
+│       ▼   ▼   ▼    ▼   ▼    ▼    ▼                                         │
+│      DLQ DLQ DLQ  DLQ DLQ DLQ  DLQ                                       │
+│      ─── ─── ───  ─── ─── ───  ───                                       │
+│      P2  P3  P3   P4  P1  P1   P1      ← alarm priority                  │
+│                                                                              │
+│                                                                              │
+│  ┌─────────────┐                                                            │
+│  │  Rating     │       LEGEND:                                              │
+│  │  Service    │       DM = driver-matching        P1 = PagerDuty (1 min)  │
+│  └─────┬───────┘       EC = eta-calculation        P2 = Slack (15 min)     │
+│        │               PN = push-notification (λ)  P3 = Slack (1 hr)       │
+│        │ rating_       AN = analytics              P4 = Slack (Monday)     │
+│        │ submitted     RG = receipt-generation                              │
+│        ▼               FD = fraud-detection (λ)                             │
+│  ┌────────────────┐    DP = driver-payout                                   │
+│  │  user-events   │                                                         │
+│  │  (Standard)    │    → SQS subscribers get filter policies               │
+│  └────┬──────┬────┘    → Lambda subs need SNS subscription DLQs            │
+│       │      │         → Every queue has its own SQS redrive DLQ           │
+│       ▼      ▼         → Two-layer DLQ for Lambda paths                    │
+│     ┌──┐  ┌──┐                                                             │
+│     │DR│  │GA│                                                              │
+│     │Q │  │Q │         MONITORING:                                          │
+│     └┬─┘  └┬─┘         • CloudWatch: NumberOfNotificationsFailed per topic │
+│      │     │            • CloudWatch: ApproximateNumberOfMessages per DLQ   │
+│      ▼     ▼            • Custom metric: end-to-end event latency          │
+│     DLQ   DLQ           • X-Ray: tracing across SNS → SQS → consumer      │
+│     P3    P4                                                                │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5g. Interview Angle — How to Present This
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│           HOW TO ANSWER "DESIGN RIDE EVENT SYSTEM" IN AN INTERVIEW           │
+│                                                                              │
+│  STEP 1 (30 sec): State the event catalog                                   │
+│    "A ride generates 9 event types across 3 domains:                        │
+│     ride lifecycle, payments, and user activity."                            │
+│                                                                              │
+│  STEP 2 (1 min): Justify topic separation                                   │
+│    "I'd use 3 SNS topics, not 1, because:                                   │
+│     - Payment events need FIFO ordering (can't double-charge)              │
+│     - Different teams own different domains                                 │
+│     - Independent scaling and blast radius isolation                        │
+│     - Different SLAs: payment = P1, analytics = P4"                        │
+│                                                                              │
+│  STEP 3 (2 min): Draw the subscription map                                  │
+│    Show topic → subscriber mapping with filter policies.                    │
+│    Explain WHY each subscriber needs its specific filter.                   │
+│                                                                              │
+│  STEP 4 (1 min): Address ordering                                           │
+│    "Payment topic is FIFO with MessageGroupId = ride_id.                    │
+│     This gives strict per-ride ordering without sacrificing                 │
+│     parallelism across rides. Ride events are Standard because             │
+│     eventual consistency is acceptable there."                              │
+│                                                                              │
+│  STEP 5 (1 min): Show failure handling                                      │
+│    "Every subscription has a DLQ. DLQ alarm priority matches              │
+│     business impact: payment DLQ → PagerDuty P1,                          │
+│     analytics DLQ → Slack P4, replay on Monday."                           │
+│                                                                              │
+│  STEP 6 (30 sec): Back-of-envelope math                                     │
+│    "At 1M rides/day: ~104 events/sec across all topics.                    │
+│     SNS handles 30K msg/s. We have 288x headroom.                          │
+│     Even at Uber scale (25M rides/day), Standard SNS is fine.             │
+│     FIFO would need topic sharding above ~22M rides/day."                  │
+│                                                                              │
+│  BONUS POINTS:                                                               │
+│    - Mention cost: $135/mo at 1M rides/day                                 │
+│    - Mention claim-check pattern for ride GPS traces (>256 KB)             │
+│    - Mention cross-region: replicate events to DR region via               │
+│      SNS → SQS cross-region subscription                                   │
+│    - Mention idempotency: consumer must handle duplicate delivery          │
+│      because SNS Standard is at-least-once                                 │
+│    - Mention the Kafka escape hatch at extreme scale                       │
+│                                                                              │
+│  ⚠ COMMON MISTAKES IN INTERVIEWS:                                          │
+│    ✗ Using one mega-topic for everything                                   │
+│    ✗ Forgetting DLQs on subscriptions                                      │
+│    ✗ Using FIFO for everything (kills throughput at 300 msg/s/group)       │
+│    ✗ Not calculating scale math (just saying "SNS will handle it")         │
+│    ✗ Skipping the filter policy explanation (shows you know the API)       │
+│    ✗ Direct SNS → Lambda without SQS buffer (no backpressure)             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## 12. When SNS Failed — Production Incidents
@@ -1279,6 +2651,90 @@ This is the most important pattern in AWS messaging. If you remember ONE thing, 
 │  • CloudWatch metrics showed SUCCESS — no indication of delay                │
 │  • Enable CloudWatch DELIVERY LOGS (not just metrics) to see timing          │
 │  • Monitor end-to-end latency, not just delivery success/failure             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Deep Dive: What Is throttlePolicy: maxReceivesPerSecond?
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│         throttlePolicy — SNS DELIVERY RATE LIMITING (HTTP/S ONLY)            │
+│                                                                              │
+│  WHAT IT IS:                                                                 │
+│  A delivery policy setting on HTTP/HTTPS subscriptions that limits           │
+│  how many messages per second SNS will push to that specific endpoint.       │
+│                                                                              │
+│  CONFIGURATION (set on the subscription's delivery policy):                  │
+│  {                                                                           │
+│    "throttlePolicy": {                                                       │
+│      "maxReceivesPerSecond": 10                                              │
+│    }                                                                         │
+│  }                                                                           │
+│                                                                              │
+│  HOW IT WORKS:                                                               │
+│                                                                              │
+│  Publisher sends 100 msgs/sec to topic                                       │
+│           │                                                                  │
+│           ▼                                                                  │
+│      [SNS Topic]                                                             │
+│           │                                                                  │
+│           ├──→ SQS Queue (no throttle — gets all 100/sec instantly)         │
+│           │                                                                  │
+│           └──→ HTTP Endpoint (maxReceivesPerSecond = 10)                    │
+│                │                                                             │
+│                SNS delivers at MOST 10 msgs/sec to this endpoint             │
+│                Remaining msgs → queued internally → delivered later           │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  THE BUG THAT CAUSED THE 65-DAY INCIDENT:                                   │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────┐          │
+│  │  Even at LOW volumes (5 msgs/hour), setting ANY throttle value │          │
+│  │  triggers SNS's internal queuing/scheduling mechanism.          │          │
+│  │                                                                │          │
+│  │  This internal queue has its own:                               │          │
+│  │  • Batching logic                                               │          │
+│  │  • Scheduling delays                                            │          │
+│  │  • Internal retry windows                                       │          │
+│  │                                                                │          │
+│  │  ALL of these are UNDOCUMENTED and add unpredictable latency.  │          │
+│  │                                                                │          │
+│  │  Result: a topic handling 5 msgs/hour with a throttle of       │          │
+│  │  1 msg/sec (3600x headroom!) still saw 30+ minute delays       │          │
+│  │  because SNS's internal scheduler added overhead just by       │          │
+│  │  EXISTING in the delivery path.                                 │          │
+│  └────────────────────────────────────────────────────────────────┘          │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  KEY FACTS:                                                                  │
+│  • Only applies to HTTP/HTTPS subscriptions (not SQS, Lambda, Email, SMS)   │
+│  • Default: no throttle (SNS delivers as fast as possible)                  │
+│  • CloudWatch metrics show "delivered successfully" even when delayed        │
+│  • No way to see the internal queue depth or scheduling delay               │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  BEST PRACTICE — DON'T USE IT:                                               │
+│                                                                              │
+│  Instead of:                                                                 │
+│    SNS → HTTP (with throttlePolicy)          ← fragile, buggy latency      │
+│                                                                              │
+│  Do this:                                                                    │
+│    SNS → SQS → Your Service (polls at own rate)  ← reliable backpressure   │
+│                                                                              │
+│  SQS gives you NATURAL rate control:                                         │
+│  • Your service polls only when ready (backpressure)                        │
+│  • Messages persist for up to 14 days (no loss)                             │
+│  • You control concurrency via consumer thread count                         │
+│  • No undocumented SNS internal queuing in the path                         │
+│                                                                              │
+│  If you MUST use HTTP endpoints and can't add SQS, at least:                │
+│  • Don't set throttlePolicy (let SNS deliver at full speed)                 │
+│  • Handle rate limiting on YOUR server side (return 429 → SNS retries)      │
+│  • Monitor end-to-end latency, not just delivery success                    │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2082,7 +3538,146 @@ ANSWER FRAMEWORK:
       different message groups process in parallel (correct behavior)
       But SAME message group goes to same Lambda instance
       Fix: verify MessageGroupId is set correctly
+```
 
+### Deep Dive: How FIFO SQS + Lambda Concurrency Actually Works
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│     FIFO SQS + LAMBDA: MESSAGE GROUP ROUTING EXPLAINED                       │
+│                                                                              │
+│  SETUP: SNS FIFO topic → SQS FIFO queue → Lambda trigger (concurrency > 1) │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  SQS FIFO queue has these messages waiting:                                  │
+│                                                                              │
+│    Msg 1: GroupId = "ride-A"   payload = "payment_processed"                │
+│    Msg 2: GroupId = "ride-A"   payload = "payment_failed"                   │
+│    Msg 3: GroupId = "ride-B"   payload = "payment_processed"                │
+│    Msg 4: GroupId = "ride-C"   payload = "payment_processed"                │
+│    Msg 5: GroupId = "ride-A"   payload = "refund_issued"                    │
+│                                                                              │
+│  When Lambda polls with concurrency > 1, SQS routes by GroupId:            │
+│                                                                              │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐        │
+│  │   Lambda Instance 1          │  │   Lambda Instance 2          │        │
+│  │                              │  │                              │        │
+│  │   Msg 1: ride-A              │  │   Msg 3: ride-B              │        │
+│  │     payment_processed        │  │     payment_processed        │        │
+│  │                              │  │                              │        │
+│  │   Msg 2: ride-A              │  │   Msg 4: ride-C              │        │
+│  │     payment_failed           │  │     payment_processed        │        │
+│  │                              │  │                              │        │
+│  │   Msg 5: ride-A              │  │                              │        │
+│  │     refund_issued            │  │                              │        │
+│  │                              │  │                              │        │
+│  │   (ALL ride-A, IN ORDER)     │  │   (different rides, parallel)│        │
+│  └──────────────────────────────┘  └──────────────────────────────┘        │
+│                                                                              │
+│  ✓ ride-A: processed 1 → 2 → 5 (strict order, one instance)               │
+│  ✓ ride-B: processed in parallel with ride-A (independent group)           │
+│  ✓ ride-C: processed in parallel with ride-A and ride-B                    │
+│                                                                              │
+│  THE RULE:                                                                   │
+│  ┌────────────────────────────────────────────────────────────────┐         │
+│  │  Same MessageGroupId   → SAME Lambda instance, IN ORDER       │         │
+│  │  Different GroupIds    → DIFFERENT instances, IN PARALLEL      │         │
+│  │                                                                │         │
+│  │  GroupId is the "lane divider":                                │         │
+│  │  • Messages in the same lane → strictly serialized            │         │
+│  │  • Messages in different lanes → race in parallel             │         │
+│  └────────────────────────────────────────────────────────────────┘         │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  WHAT GOES WRONG #1: Single static GroupId (kills parallelism)              │
+│                                                                              │
+│  BAD: All messages use MessageGroupId = "payments"                          │
+│                                                                              │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐        │
+│  │   Lambda Instance 1          │  │   Lambda Instance 2          │        │
+│  │                              │  │                              │        │
+│  │   Msg 1: "payments"          │  │                              │        │
+│  │   Msg 2: "payments"          │  │   (idle — SQS sends ALL     │        │
+│  │   Msg 3: "payments"          │  │    messages to Instance 1   │        │
+│  │   Msg 4: "payments"          │  │    because they share the   │        │
+│  │   Msg 5: "payments"          │  │    same group)              │        │
+│  │                              │  │                              │        │
+│  └──────────────────────────────┘  └──────────────────────────────┘        │
+│                                                                              │
+│  Result: ZERO parallelism. Everything serialized.                           │
+│  ride-C's payment waits for ride-A to finish. Massive latency.             │
+│  FIFO throughput: 300 msg/s per group → 300 msg/s total.                   │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  WHAT GOES WRONG #2: Random/missing GroupId (breaks ordering)               │
+│                                                                              │
+│  BAD: Each message gets a random GroupId like UUID                          │
+│                                                                              │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐        │
+│  │   Lambda Instance 1          │  │   Lambda Instance 2          │        │
+│  │                              │  │                              │        │
+│  │   Msg 1: ride-A              │  │   Msg 2: ride-A              │        │
+│  │     payment_processed        │  │     payment_failed           │        │
+│  │                              │  │                              │        │
+│  │   Msg 4: ride-C              │  │   Msg 5: ride-A              │        │
+│  │                              │  │     refund_issued            │        │
+│  └──────────────────────────────┘  └──────────────────────────────┘        │
+│                                                                              │
+│  Result: ride-A's messages SPLIT across instances.                          │
+│  Instance 2 processes payment_failed BEFORE Instance 1 finishes            │
+│  payment_processed. ORDER VIOLATED → double charge, wrong state.           │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  CORRECT GroupId DESIGN:                                                     │
+│                                                                              │
+│  ┌─────────────────────┬────────────────────────────────────────┐           │
+│  │ Use case            │ MessageGroupId should be               │           │
+│  ├─────────────────────┼────────────────────────────────────────┤           │
+│  │ Ride payments       │ ride_id     ("ride-A")                 │           │
+│  │ Order processing    │ order_id    ("order-12345")            │           │
+│  │ User activity       │ user_id     ("user-99")               │           │
+│  │ Stock trades        │ ticker      ("AAPL")                   │           │
+│  │ Chat messages       │ channel_id  ("channel-567")            │           │
+│  │ IoT device state    │ device_id   ("sensor-42")              │           │
+│  └─────────────────────┴────────────────────────────────────────┘           │
+│                                                                              │
+│  FORMULA:                                                                    │
+│  GroupId = the entity whose events MUST be ordered relative to each other   │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  SCALE IMPACT OF GroupId CARDINALITY:                                        │
+│                                                                              │
+│  ┌─────────────────────┬────────────┬──────────────────────────────┐        │
+│  │ GroupId strategy     │ Unique IDs │ Effective throughput         │        │
+│  ├─────────────────────┼────────────┼──────────────────────────────┤        │
+│  │ Static: "payments"  │ 1          │ 300 msg/s (one lane)         │        │
+│  │ Per-city: "BLR"     │ ~50        │ 300 × 50 = 15K msg/s        │        │
+│  │ Per-ride: "ride-A"  │ ~1M/day    │ 300 × N = effectively       │        │
+│  │                     │            │ unlimited (each ride has     │        │
+│  │                     │            │ only ~3 payment events)      │        │
+│  └─────────────────────┴────────────┴──────────────────────────────┘        │
+│                                                                              │
+│  More unique GroupIds = more parallelism = higher throughput                 │
+│  FIFO's 300 msg/s limit is PER GROUP, not per topic                        │
+│  (Topic limit: 3,000 msg/s across all groups combined)                     │
+│                                                                              │
+│  ─────────────────────────────────────────────────────────────────────────   │
+│                                                                              │
+│  INTERVIEW ANSWER (one-liner):                                               │
+│  "MessageGroupId is the lane divider. Same lane = strict order,             │
+│   one consumer. Different lanes = parallel processing. Pick the             │
+│   entity that needs ordering (ride_id, order_id) as your GroupId.           │
+│   Never use a static GroupId — it kills parallelism."                       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+```
    c. Publisher sending events out of order:
       If publisher is distributed (multiple instances), they may publish
       events in different order than business logic

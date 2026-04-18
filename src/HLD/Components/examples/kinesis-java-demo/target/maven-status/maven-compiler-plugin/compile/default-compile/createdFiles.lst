@@ -1,0 +1,6 @@
+com/demo/kinesis/ConceptExplainer.class
+com/demo/kinesis/KinesisConsumer.class
+com/demo/kinesis/KinesisConfig.class
+com/demo/kinesis/KinesisProducer.class
+com/demo/kinesis/KinesisAdmin.class
+com/demo/kinesis/KinesisPlayground.class

@@ -227,6 +227,341 @@ READING THIS DIAGRAM — THE HIERARCHY:
 └────────────────────┘                              └──────────────────────┘
 ```
 
+### 7-Broker Cluster — Complete Example Walkthrough
+
+This is a real-world-style example matching the demo project. Read it top-to-bottom.
+
+```
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 0 — THE CLUSTER
+═══════════════════════════════════════════════════════════════════════════════════
+
+ A "cluster" is simply a GROUP OF BROKERS that know about each other.
+ They coordinate through a KRaft controller quorum (metadata leader).
+
+                       ┌──────────────────────────────────────┐
+                       │           KAFKA CLUSTER               │
+                       │         "my-kafka-cluster"            │
+                       │                                      │
+                       │   7 Brokers   ·   2 Topics           │
+                       │   RF = 3      ·   min.insync = 2     │
+                       └──────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 1 — THE BROKERS (7 physical/virtual servers)
+═══════════════════════════════════════════════════════════════════════════════════
+
+ Each broker is a JVM process with its own disk, port, and broker ID.
+ 3 of them also run the KRaft controller (metadata management).
+
+ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+ │  Broker 1     │ │  Broker 2     │ │  Broker 3     │
+ │  port: 9092   │ │  port: 9192   │ │  port: 9292   │
+ │               │ │               │ │               │
+ │  ★ Controller │ │  ★ Controller │ │  ★ Controller │
+ │  + Broker     │ │  + Broker     │ │  + Broker     │
+ └──────────────┘ └──────────────┘ └──────────────┘
+
+ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+ │  Broker 4     │ │  Broker 5     │ │  Broker 6     │ │  Broker 7     │
+ │  port: 9392   │ │  port: 9492   │ │  port: 9592   │ │  port: 9692   │
+ │               │ │               │ │               │ │               │
+ │  Pure Broker  │ │  Pure Broker  │ │  Pure Broker  │ │  Pure Broker  │
+ │  (no ctrl)    │ │  (no ctrl)    │ │  (no ctrl)    │ │  (no ctrl)    │
+ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
+
+ Controller quorum: Brokers 1, 2, 3 run Raft consensus for metadata.
+ Pure brokers: Brokers 4-7 only store data and serve clients.
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 2 — THE TOPICS (logical groupings, like DB tables)
+═══════════════════════════════════════════════════════════════════════════════════
+
+ A topic is a NAMED STREAM of events. It doesn't live on one broker —
+ it's split into partitions that are SPREAD across all brokers.
+
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │                                                                              │
+ │  Topic: "demo-orders"                   Topic: "demo-clicks"                │
+ │  ┌──────────────────────────────┐       ┌──────────────────────────────┐    │
+ │  │  6 partitions, RF=3         │       │  7 partitions, RF=3         │    │
+ │  │  = 18 total replica copies  │       │  = 21 total replica copies  │    │
+ │  │  on 7 brokers               │       │  on 7 brokers               │    │
+ │  └──────────────────────────────┘       └──────────────────────────────┘    │
+ │                                                                              │
+ │  Total partition replicas in cluster: 18 + 21 = 39 copies across 7 brokers  │
+ │                                                                              │
+ └──────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 3 — THE PARTITIONS (physical ordered logs)
+═══════════════════════════════════════════════════════════════════════════════════
+
+ Each partition is an APPEND-ONLY LOG on disk.
+ Each message gets a sequential OFFSET (0, 1, 2, 3...).
+ Key determines partition: hash(key) % num_partitions.
+
+ Topic: "demo-clicks" — 7 partitions, each replicated to 3 brokers
+
+ Partition 0:  [off:0][off:1][off:2][off:3][off:4][off:5] ──► next write
+ Partition 1:  [off:0][off:1][off:2] ──►
+ Partition 2:  [off:0][off:1][off:2][off:3][off:4][off:5][off:6][off:7] ──►
+ Partition 3:  [off:0][off:1] ──►
+ Partition 4:  [off:0][off:1][off:2][off:3] ──►
+ Partition 5:  [off:0][off:1][off:2][off:3][off:4] ──►
+ Partition 6:  [off:0][off:1][off:2][off:3] ──►
+
+ ✓ Messages with the same key always land in the same partition → guaranteed order
+ ✗ No ordering guarantee across different partitions
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 4 — REPLICA PLACEMENT (where partitions physically live)
+═══════════════════════════════════════════════════════════════════════════════════
+
+ RF=3 means each partition has 3 copies. The controller places them using a
+ round-robin shift pattern across brokers. First broker = preferred leader (★).
+
+ Topic: "demo-clicks" replica assignment (from Kafka UI):
+
+ Partition │ Replicas   │ Leader │ Followers
+ ──────────┼────────────┼────────┼──────────
+    P0     │ [6, 7, 1]  │  B6 ★  │  B7, B1
+    P1     │ [7, 1, 2]  │  B7 ★  │  B1, B2
+    P2     │ [1, 2, 3]  │  B1 ★  │  B2, B3
+    P3     │ [2, 3, 4]  │  B2 ★  │  B3, B4
+    P4     │ [3, 4, 5]  │  B3 ★  │  B4, B5
+    P5     │ [4, 5, 6]  │  B4 ★  │  B5, B6
+    P6     │ [5, 6, 7]  │  B5 ★  │  B6, B7
+
+ Notice: leaders are spread across 7 different brokers — no bottleneck.
+ Each broker leads ~1 partition and follows ~2 others for this topic.
+
+ PHYSICAL VIEW — which partitions each broker stores:
+
+ Broker 1               Broker 2               Broker 3
+ ┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+ │ P0 (follower)  │     │ P1 (follower)  │     │ P2 (follower)  │
+ │ P1 (follower)  │     │ P2 (follower)  │     │ P3 (follower)  │
+ │ P2 ★ (LEADER)  │     │ P3 ★ (LEADER)  │     │ P4 (follower)  │
+ │                │     │                │     │                │
+ │ 3 replicas     │     │ 3 replicas     │     │ 3 replicas     │
+ │ 1 leader       │     │ 1 leader       │     │ 0 leaders      │
+ └────────────────┘     └────────────────┘     └────────────────┘
+
+ Broker 4               Broker 5               Broker 6
+ ┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+ │ P3 (follower)  │     │ P4 (follower)  │     │ P0 ★ (LEADER)  │
+ │ P4 (follower)  │     │ P5 (follower)  │     │ P5 (follower)  │
+ │ P5 ★ (LEADER)  │     │ P6 ★ (LEADER)  │     │ P6 (follower)  │
+ │                │     │                │     │                │
+ │ 3 replicas     │     │ 3 replicas     │     │ 3 replicas     │
+ │ 1 leader       │     │ 1 leader       │     │ 1 leader       │
+ └────────────────┘     └────────────────┘     └────────────────┘
+
+ Broker 7
+ ┌────────────────┐
+ │ P0 (follower)  │    Total: 7 × 3 = 21 replica copies
+ │ P1 ★ (LEADER)  │    Leaders: one per partition = 7
+ │ P6 (follower)  │    Each broker holds 3 replicas, leads ~1
+ │                │
+ │ 3 replicas     │
+ │ 1 leader       │
+ └────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 5 — REPLICATION FLOW (how followers stay in sync)
+═══════════════════════════════════════════════════════════════════════════════════
+
+ Let's zoom into Partition 0: Replicas = [6, 7, 1]
+
+ Producer (acks=all)
+     │
+     │ 1. Send "click-event-42" to P0
+     ▼
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │                                                                          │
+ │  Broker 6 — P0 LEADER ★                                                 │
+ │  ┌─────────────────────────────────────────────────────────────┐        │
+ │  │ Log: [off:0][off:1][off:2]...[off:41][off:42] ←— NEW      │        │
+ │  │                                              ▲              │        │
+ │  │                                     HW=42 (high watermark) │        │
+ │  └─────────────────────────────────────────────────────────────┘        │
+ │      ▲                     ▲                                            │
+ │      │  2. Fetch           │  2. Fetch                                  │
+ │      │                     │                                            │
+ │  Broker 7 — P0 Follower    Broker 1 — P0 Follower                      │
+ │  ┌─────────────────────┐   ┌─────────────────────┐                     │
+ │  │ Log: [...][off:42]  │   │ Log: [...][off:42]  │                     │
+ │  │ ✓ In-Sync (ISR)     │   │ ✓ In-Sync (ISR)     │                     │
+ │  └─────────────────────┘   └─────────────────────┘                     │
+ │                                                                          │
+ │  3. All ISR have off:42 → HW advances → producer gets ACK               │
+ │                                                                          │
+ │  ISR = {6, 7, 1} — all 3 replicas in sync — healthy                    │
+ │                                                                          │
+ └──────────────────────────────────────────────────────────────────────────┘
+
+ Timeline:
+ ─────────────────────────────────────────────────────────────────
+ t=0ms   Producer sends to Broker 6 (P0 leader)
+ t=1ms   Broker 6 appends to local log, offset=42
+ t=2ms   Broker 7 fetches, gets offset 42, appends
+ t=3ms   Broker 1 fetches, gets offset 42, appends
+ t=4ms   Broker 6 sees all ISR caught up → advances HW to 42
+ t=5ms   Producer receives ack (success, acks=all satisfied)
+ ─────────────────────────────────────────────────────────────────
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 6 — BROKER FAILURE AND LEADER ELECTION
+═══════════════════════════════════════════════════════════════════════════════════
+
+ What happens when Broker 6 crashes? (it was leader for P0 and follower for P5, P6)
+
+ BEFORE FAILURE:
+                 P0: [6★, 7, 1]    P5: [4★, 5, 6]    P6: [5★, 6, 7]
+
+ ┌──────────┐   ┌──────────┐   ┌──────────┐
+ │ Broker 6  │   │ Broker 7  │   │ Broker 1  │
+ │ P0 ★ Lead │   │ P0 Follow │   │ P0 Follow │
+ │ P5 Follow │   │ P1 ★ Lead │   │ P2 ★ Lead │
+ │ P6 Follow │   │ P6 Follow │   │ P1 Follow │
+ │   ALIVE   │   │   ALIVE   │   │   ALIVE   │
+ └──────────┘   └──────────┘   └──────────┘
+
+ AFTER Broker 6 CRASHES:
+
+ ┌──────────┐   ┌──────────┐   ┌──────────┐
+ │ Broker 6  │   │ Broker 7  │   │ Broker 1  │
+ │ ╳╳╳╳╳╳╳╳ │   │ P0 ★ LEAD │   │ P0 Follow │
+ │ ╳╳ DEAD ╳ │   │ P1 ★ Lead │   │ P2 ★ Lead │
+ │ ╳╳╳╳╳╳╳╳ │   │ P6 Follow │   │ P1 Follow │
+ └──────────┘   └──────────┘   └──────────┘
+
+ Step by step:
+ ┌────────────────────────────────────────────────────────────────────────────┐
+ │                                                                            │
+ │  1. Controller detects Broker 6 is unresponsive (heartbeat timeout)        │
+ │                                                                            │
+ │  2. P0 lost its leader (Broker 6)                                         │
+ │     → Controller picks NEXT IN ISR: Broker 7 becomes new P0 leader        │
+ │     → P0 ISR shrinks: {6, 7, 1} → {7, 1}                                │
+ │                                                                            │
+ │  3. P5 and P6 lost a follower (Broker 6)                                  │
+ │     → Leaders unchanged (Broker 4 and Broker 5 still alive)               │
+ │     → P5 ISR: {4, 5, 6} → {4, 5}                                         │
+ │     → P6 ISR: {5, 6, 7} → {5, 7}                                         │
+ │                                                                            │
+ │  4. URP (Under-Replicated Partitions) = 3                                  │
+ │     P0, P5, P6 each have 2 ISR instead of 3                              │
+ │     Data is SAFE (2 copies remain), but durability is reduced             │
+ │                                                                            │
+ │  5. Producers continue writing (min.insync.replicas=2, ISR=2 → OK)        │
+ │     If ANOTHER broker dies → ISR could drop below 2 → writes FAIL         │
+ │                                                                            │
+ │  6. Broker 6 comes back online                                            │
+ │     → Fetches missed data from current leaders                            │
+ │     → Catches up → re-joins ISR for P0, P5, P6                           │
+ │     → URP drops back to 0                                                 │
+ │     → Preferred leader election: P0 leader moves back to Broker 6         │
+ │                                                                            │
+ └────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ LEVEL 7 — CONSUMERS READING FROM THE CLUSTER
+═══════════════════════════════════════════════════════════════════════════════════
+
+ Topic: "demo-clicks" (7 partitions across 7 brokers)
+
+ Consumer Group: "click-analytics" (3 consumers)
+
+ ┌─────────────────────────────────────────────────────────────────────────────┐
+ │                                                                             │
+ │  Broker 6        Broker 7        Broker 1        Broker 2                  │
+ │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐              │
+ │  │ P0 ★     │   │ P1 ★     │   │ P2 ★     │   │ P3 ★     │              │
+ │  └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘              │
+ │       │              │              │              │                      │
+ │       ▼              ▼              ▼              ▼                      │
+ │  ┌──────────────────────────┐  ┌──────────────────────────┐              │
+ │  │   Consumer C1             │  │   Consumer C2             │              │
+ │  │   ← P0 (from B6)         │  │   ← P2 (from B1)         │              │
+ │  │   ← P1 (from B7)         │  │   ← P3 (from B2)         │              │
+ │  │   ← P6 (from B5)         │  │   ← P4 (from B3)         │              │
+ │  └──────────────────────────┘  └──────────────────────────┘              │
+ │                                                                             │
+ │  Broker 4        Broker 5                                                  │
+ │  ┌──────────┐   ┌──────────┐                                              │
+ │  │ P5 ★     │   │ P6 ★     │                                              │
+ │  └────┬─────┘   └────┬─────┘                                              │
+ │       │              │                                                      │
+ │       ▼              ▼                                                      │
+ │  ┌──────────────────────────┐                                              │
+ │  │   Consumer C3             │    7 partitions ÷ 3 consumers =             │
+ │  │   ← P5 (from B4)         │    C1 gets 3, C2 gets 2, C3 gets 2         │
+ │  └──────────────────────────┘                                              │
+ │                                                                             │
+ │  Each consumer talks DIRECTLY to the broker that is the partition leader.  │
+ │  No routing layer — the client knows the leader map from metadata.         │
+ │                                                                             │
+ └─────────────────────────────────────────────────────────────────────────────┘
+
+ If Consumer C2 crashes:
+ ───────────────────────
+ Rebalance! Partitions P2, P3, P4 are redistributed:
+   C1: P0, P1, P6, P2  (gains P2)
+   C3: P5, P3, P4      (gains P3, P4)
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+ PUTTING IT ALL TOGETHER — HIERARCHY SUMMARY
+═══════════════════════════════════════════════════════════════════════════════════
+
+ Cluster "my-kafka-cluster"
+ │
+ ├── Controller Quorum [Broker 1, 2, 3] ← metadata + leader election via Raft
+ │
+ ├── Broker 1 (port 9092)  ─── stores: clicks/P0, clicks/P1, clicks/P2★
+ ├── Broker 2 (port 9192)  ─── stores: clicks/P1, clicks/P2, clicks/P3★
+ ├── Broker 3 (port 9292)  ─── stores: clicks/P2, clicks/P3, clicks/P4★ (ctrl-only no lead here)
+ ├── Broker 4 (port 9392)  ─── stores: clicks/P3, clicks/P4, clicks/P5★
+ ├── Broker 5 (port 9492)  ─── stores: clicks/P4, clicks/P5, clicks/P6★
+ ├── Broker 6 (port 9592)  ─── stores: clicks/P0★, clicks/P5, clicks/P6
+ ├── Broker 7 (port 9692)  ─── stores: clicks/P0, clicks/P1★, clicks/P6
+ │
+ ├── Topic "demo-clicks"
+ │   ├── Partition 0  →  Replicas [6,7,1]  →  Leader: B6  →  Log: [0..N]
+ │   ├── Partition 1  →  Replicas [7,1,2]  →  Leader: B7  →  Log: [0..N]
+ │   ├── Partition 2  →  Replicas [1,2,3]  →  Leader: B1  →  Log: [0..N]
+ │   ├── Partition 3  →  Replicas [2,3,4]  →  Leader: B2  →  Log: [0..N]
+ │   ├── Partition 4  →  Replicas [3,4,5]  →  Leader: B3  →  Log: [0..N]
+ │   ├── Partition 5  →  Replicas [4,5,6]  →  Leader: B4  →  Log: [0..N]
+ │   └── Partition 6  →  Replicas [5,6,7]  →  Leader: B5  →  Log: [0..N]
+ │
+ ├── Topic "demo-orders"
+ │   ├── Partition 0  →  Replicas [...]   →  Leader: ...  →  Log: [0..N]
+ │   └── ... (6 partitions, similarly spread)
+ │
+ └── Consumer Groups
+     ├── "click-analytics"  →  3 consumers  →  each reads from partition leaders
+     ├── "order-processing" →  6 consumers  →  one per partition
+     └── "search-indexer"   →  1 consumer   →  reads all partitions
+
+
+ DATA FLOW IN ONE SENTENCE:
+ ──────────────────────────
+ Producer → picks partition via hash(key) → sends to LEADER broker for that
+ partition → leader appends to log → followers fetch → all ISR caught up →
+ high watermark advances → consumer group members pull from leader brokers →
+ each consumer processes its assigned partitions → commits offset → done.
+```
+
 ### Core Terminology
 
 ```
@@ -325,6 +660,138 @@ CONSUMER GROUP C (Search Indexing — 1 consumer):
 │  This is how Kafka enables multiple downstream systems to            │
 │  independently consume the same data stream.                         │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+### Can a Consumer Take Multiple (or ALL) Partitions?
+
+**Yes.** A single consumer can handle multiple partitions — even ALL partitions of a topic.
+
+```
+THE RULE:
+─────────
+  Within a consumer group, each PARTITION is assigned to exactly ONE consumer.
+  But each CONSUMER can be assigned ONE or MANY partitions.
+
+  1 partition  → at most 1 consumer in the group
+  1 consumer   → can handle 1, 2, 5, or ALL partitions
+
+
+EVERY POSSIBLE SCENARIO (Topic: "demo-clicks", 7 partitions):
+──────────────────────────────────────────────────────────────
+
+CASE 1:  7 consumers in group (ideal — 1:1 mapping)
+─────────────────────────────────────────────────────
+  P0 ──► C1       Each consumer handles exactly 1 partition.
+  P1 ──► C2       Maximum parallelism.
+  P2 ──► C3       Each consumer only processes ~14% of total traffic.
+  P3 ──► C4
+  P4 ──► C5
+  P5 ──► C6
+  P6 ──► C7
+
+CASE 2:  3 consumers in group (common — consumers handle 2-3 partitions each)
+──────────────────────────────────────────────────────────────────────────────
+  P0, P1, P6  ──► C1    (3 partitions)
+  P2, P3      ──► C2    (2 partitions)
+  P4, P5      ──► C3    (2 partitions)
+
+  7 partitions ÷ 3 consumers → some get 3, some get 2.
+  Each consumer processes messages from ALL its assigned partitions
+  by polling and receiving a batch that may contain records from
+  multiple partitions in a single poll() call.
+
+CASE 3:  1 consumer in group (handles ALL partitions)
+──────────────────────────────────────────────────────
+  P0, P1, P2, P3, P4, P5, P6  ──► C1    (all 7 partitions)
+
+  Perfectly valid! One consumer reads the ENTIRE topic.
+  Use case: small-volume topics, or simple aggregation services.
+  Downside: no parallelism, single point of failure for processing.
+
+CASE 4:  10 consumers in group (more consumers than partitions)
+───────────────────────────────────────────────────────────────
+  P0 ──► C1
+  P1 ──► C2
+  P2 ──► C3
+  P3 ──► C4
+  P4 ──► C5
+  P5 ──► C6
+  P6 ──► C7
+         C8  ──► IDLE (no partition assigned)
+         C9  ──► IDLE (no partition assigned)
+         C10 ──► IDLE (no partition assigned)
+
+  3 consumers sit idle doing NOTHING.
+  They waste resources but stay as hot standby —
+  if C1 crashes, C8 immediately picks up P0 (fast failover).
+
+
+WHY THE "ONE PARTITION → ONE CONSUMER" RULE?
+─────────────────────────────────────────────
+  If two consumers in the SAME group read the same partition:
+  → Both would process message at offset 5
+  → Both would try to commit offset 5
+  → Duplicate processing, conflicting offset commits, chaos
+
+  Kafka avoids this by design:
+  1 partition = 1 consumer per group = guaranteed ordering + no duplicates
+
+  BUT: Two consumers in DIFFERENT groups CAN read the same partition.
+  That's the whole point of consumer groups — independent processing.
+
+
+DYNAMIC REBALANCING — WHAT HAPPENS WHEN CONSUMERS JOIN/LEAVE:
+─────────────────────────────────────────────────────────────
+
+  Start: 3 consumers, 7 partitions
+  ┌──────────────────────────────────────────────┐
+  │  C1: P0, P1, P6   C2: P2, P3   C3: P4, P5  │
+  └──────────────────────────────────────────────┘
+                       │
+          C2 crashes   ▼
+                       │
+  ┌──────────────────────────────────────────────┐
+  │  C1: P0, P1, P2, P6    C3: P3, P4, P5       │  ← P2, P3 redistributed
+  └──────────────────────────────────────────────┘
+                       │
+     C4 joins group    ▼
+                       │
+  ┌──────────────────────────────────────────────┐
+  │  C1: P0, P1   C3: P4, P5   C4: P2, P6, P3  │  ← rebalanced across 3
+  └──────────────────────────────────────────────┘
+
+  Rebalance triggers:
+  • Consumer joins the group
+  • Consumer leaves (crash or graceful shutdown)
+  • New partition added to the topic
+  • Consumer heartbeat timeout (session.timeout.ms)
+
+  During rebalance: ALL consumers in the group PAUSE briefly.
+  This is why large consumer groups can have rebalance storms.
+  Kafka 3.1+ supports "cooperative incremental rebalance" to minimize pauses.
+
+
+INTERVIEW QUESTION: "Can one consumer read all partitions of a topic?"
+──────────────────────────────────────────────────────────────────────
+  Answer: YES. If a consumer group has only 1 consumer,
+  that consumer is automatically assigned ALL partitions.
+  This is common for:
+  - Low-throughput topics
+  - Global aggregation (need to see all data in one place)
+  - Development/debugging
+  - Kafka Streams tasks with single instance
+
+  You can also MANUALLY assign partitions using assign() instead of
+  subscribe(), bypassing the group coordinator entirely:
+
+    consumer.assign(Arrays.asList(
+        new TopicPartition("demo-clicks", 0),
+        new TopicPartition("demo-clicks", 1),
+        new TopicPartition("demo-clicks", 2),
+        // ... any subset or all partitions
+    ));
+
+  With assign(), you get full control but lose automatic rebalancing.
 ```
 
 ---
@@ -874,6 +1341,209 @@ Why Kafka chose ISR over majority vote:
   • Data-intensive workloads where storage cost matters
   • ISR shrinks dynamically — slow follower removed, doesn't block writes
   • Producer can choose to not wait for ack (acks=0 or acks=1)
+```
+
+### URP (Under-Replicated Partitions) — The #1 Monitoring Metric
+
+```
+URP = number of partitions where ISR count < total replica count
+
+In other words: "How many partitions have at least one follower that fell behind?"
+
+─────────────────────────────────────────────────────────────────
+
+HEALTHY (URP = 0):
+
+  Partition 0 (RF=3):
+    Broker 0 (Leader):   offset 250
+    Broker 1 (Follower): offset 250   ← caught up ✓
+    Broker 2 (Follower): offset 250   ← caught up ✓
+    ISR = [0, 1, 2]   → All replicas in sync
+
+  URP for this partition = 0
+
+─────────────────────────────────────────────────────────────────
+
+UNHEALTHY (URP > 0):
+
+  Partition 0 (RF=3):
+    Broker 0 (Leader):   offset 250
+    Broker 1 (Follower): offset 250   ← caught up ✓
+    Broker 2 (Follower): offset 180   ← BEHIND! Removed from ISR ✗
+    ISR = [0, 1]   → Only 2 of 3 replicas in sync
+
+  URP for this partition = 1
+  (Replica count=3, ISR count=2 → 3-2 = 1 under-replicated)
+
+─────────────────────────────────────────────────────────────────
+
+CLUSTER-WIDE URP:
+  Sum of all partitions that have at least one under-replicated replica.
+  Even if one partition has 2 followers behind, it counts as 1 URP.
+
+  Topic "orders" (4 partitions, RF=3):
+    Partition 0: ISR=[0,1,2] → OK
+    Partition 1: ISR=[1,2]   → URP! (Broker 0 behind)
+    Partition 2: ISR=[0,1,2] → OK
+    Partition 3: ISR=[0,2]   → URP! (Broker 1 behind)
+
+  Cluster URP = 2
+
+─────────────────────────────────────────────────────────────────
+
+WHY URP IS DANGEROUS:
+
+  Scenario: Partition 1 has ISR=[1,2] (Broker 0 behind)
+
+  If Broker 1 (leader) dies NOW:
+    → New leader = Broker 2 (only remaining ISR member)
+    → Broker 0 is behind → data gap possible
+    → If Broker 2 ALSO dies → data loss!
+
+  With URP=0 and RF=3: losing 1 broker = zero data loss, zero downtime
+  With URP>0 and RF=3: losing 1 broker = MIGHT lose data
+
+─────────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────────┐
+│  URP VALUE  │  SEVERITY  │  ACTION                              │
+├─────────────┼────────────┼──────────────────────────────────────┤
+│  0          │  Healthy   │  None                                │
+│  > 0 brief │  Warning   │  Check: broker restart? GC pause?    │
+│             │            │  Usually self-heals in seconds.      │
+│  > 0 for   │  Critical  │  Investigate: disk failure? network? │
+│  minutes    │            │  broker overloaded? uneven leaders?  │
+│  = total    │  Outage    │  All followers down. Emergency.      │
+│  partitions │            │  Check if broker fleet is alive.     │
+└─────────────┴────────────┴──────────────────────────────────────┘
+
+COMMON CAUSES OF URP > 0:
+  • Slow disk on follower (I/O saturation)
+  • Network partition between brokers
+  • Long GC pause on follower JVM
+  • Broker restart (temporarily out of ISR)
+  • Uneven partition assignment (one broker overloaded)
+  • OS page cache thrashing (too many partitions on one broker)
+
+HOW TO MONITOR:
+  • JMX: kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions
+  • CLI: kafka-topics.sh --describe --under-replicated-partitions
+  • Admin API: describeTopics() → check isr.size() < replicas.size()
+  • Kafka UI: Topics → "Out of sync replicas" column (0 = good)
+  • Alert if URP > 0 for more than 5 minutes in production
+
+─────────────────────────────────────────────────────────────────
+
+INTERVIEW TIP:
+  "What's the single most important metric to monitor in Kafka?"
+
+  Answer: Under-Replicated Partitions (URP).
+  URP > 0 means data durability is at risk.
+  Combined with acks=all + min.insync.replicas=2,
+  URP > 0 can cause producers to FAIL (NotEnoughReplicas)
+  if ISR drops below min.insync.replicas threshold.
+```
+
+### Reading the Replicas Column in Kafka UI (Real 7-Broker Example)
+
+```
+Topic: demo-clicks   (7 partitions, RF=3, 7 brokers)
+
+Kafka UI shows:
+
+┌───────────┬─────────────┬───────────────┬────────────┬───────────────┐
+│ Partition │ Replicas    │ First Offset  │ Next Off   │ Message Count │
+├───────────┼─────────────┼───────────────┼────────────┼───────────────┤
+│    0      │  6, 7, 1    │      0        │     0      │      0        │
+│    1      │  7, 1, 2    │      0        │     0      │      0        │
+│    2      │  1, 2, 3    │      0        │     0      │      0        │
+│    3      │  2, 3, 4    │      0        │     0      │      0        │
+│    4      │  3, 4, 5    │    100        │   100      │      0        │
+│    5      │  4, 5, 6    │    100        │   200      │    100        │
+│    6      │  5, 6, 7    │      0        │   100      │    100        │
+└───────────┴─────────────┴───────────────┴────────────┴───────────────┘
+
+WHAT "REPLICAS" MEANS:
+──────────────────────
+  Replicas = the list of broker IDs that hold a COPY of this partition.
+  RF=3 → every partition has 3 copies on 3 different brokers.
+
+  Partition 0:  Replicas = [6, 7, 1]
+  → Broker 6 has a copy
+  → Broker 7 has a copy
+  → Broker 1 has a copy
+
+  That's 3 independent copies of the exact same data.
+
+HOW TO READ THE FIRST NUMBER:
+─────────────────────────────
+  The FIRST broker in the replica list is the "preferred leader."
+  This broker handles ALL reads and writes for that partition.
+
+  P0: [6, 7, 1]  → Broker 6 is the leader    (7 and 1 are followers)
+  P1: [7, 1, 2]  → Broker 7 is the leader    (1 and 2 are followers)
+  P2: [1, 2, 3]  → Broker 1 is the leader    (2 and 3 are followers)
+  P3: [2, 3, 4]  → Broker 2 is the leader    (3 and 4 are followers)
+  P4: [3, 4, 5]  → Broker 3 is the leader    (4 and 5 are followers)
+  P5: [4, 5, 6]  → Broker 4 is the leader    (5 and 6 are followers)
+  P6: [5, 6, 7]  → Broker 5 is the leader    (6 and 7 are followers)
+
+  Notice: leaders are SPREAD across all 7 brokers → no single bottleneck.
+  The controller assigns replicas using a round-robin shift pattern.
+
+WHAT HAPPENS INSIDE:
+────────────────────
+  Partition 0:   Replicas = [6, 7, 1]
+
+  Broker 6 (LEADER)        Broker 7 (FOLLOWER)      Broker 1 (FOLLOWER)
+  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+  │  Partition 0      │     │  Partition 0      │     │  Partition 0      │
+  │  [0][1][2][3][4]  │     │  [0][1][2][3][4]  │     │  [0][1][2][3][4]  │
+  │  ★ All writes     │     │  Fetches from ★   │     │  Fetches from ★   │
+  │  ★ All reads      │     │  Stays in sync    │     │  Stays in sync    │
+  └──────────────────┘     └──────────────────┘     └──────────────────┘
+         ▲                        │                        │
+         │←── fetch request ──────┘                        │
+         │←── fetch request ───────────────────────────────┘
+
+  Followers pull data from the leader (same Fetch API as consumers).
+
+WHY REPLICAS SHIFT BY 1 BROKER:
+───────────────────────────────
+  P0: [6, 7, 1]      ← starts at Broker 6
+  P1: [7, 1, 2]      ← shifts by 1
+  P2: [1, 2, 3]      ← shifts by 1
+  P3: [2, 3, 4]      ← shifts by 1
+  ...
+
+  This ensures:
+  1. Leaders are evenly distributed (each broker leads ~same number)
+  2. Replicas are spread out (no two partitions have identical placement)
+  3. If one broker dies, the impact is spread across many brokers
+     (not all partitions lose their leader at once)
+
+THE OTHER COLUMNS:
+──────────────────
+  First Offset:   Lowest available offset (data before this was deleted by retention)
+  Next Offset:    Next offset that will be assigned to a new message (= end of log)
+  Message Count:  Next Offset - First Offset = messages currently retained
+
+  Example — Partition 5:  First=100, Next=200, Count=100
+  → Offsets 0-99 were deleted (1-hour retention)
+  → Offsets 100-199 are available (100 messages)
+  → Next message will get offset 200
+
+IN SYNC REPLICAS (top of the page):
+────────────────────────────────────
+  "In Sync Replicas: 21 of 21"
+  = 7 partitions × 3 replicas = 21 total replica copies
+  = ALL 21 are caught up with their leaders
+  = URP = 0 → perfectly healthy
+
+  If a broker goes down:
+  "In Sync Replicas: 18 of 21"
+  = 3 replicas lost sync (the ones on the dead broker)
+  = URP = 3 (those 3 partitions are under-replicated)
 ```
 
 ---

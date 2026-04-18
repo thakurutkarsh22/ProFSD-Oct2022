@@ -1,0 +1,217 @@
+################################################################################
+#  7-BROKER KAFKA CLUSTER (KRaft mode, no ZooKeeper)
+#
+#  Brokers 1-3: combined broker + controller (Raft quorum)
+#  Brokers 4-7: pure brokers
+#  Replication Factor: 3  |  Min ISR: 2
+#
+#  Host ports:  9092, 9192, 9292, 9392, 9492, 9592, 9692
+#  Kafka UI:    http://localhost:8080
+################################################################################
+
+x-kafka-common: &kafka-common
+  image: apache/kafka:3.9.0
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+
+services:
+
+  # ── BROKER 1 (controller + broker) ──────────────────────────
+  kafka-1:
+    <<: *kafka-common
+    container_name: kafka-1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: HOST://:9092,DOCKER://:19092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9092,DOCKER://kafka-1:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 4
+    healthcheck:
+      test: /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── BROKER 2 (controller + broker) ──────────────────────────
+  kafka-2:
+    <<: *kafka-common
+    container_name: kafka-2
+    ports:
+      - "9192:9192"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: HOST://:9192,DOCKER://:19092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9192,DOCKER://kafka-2:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9192 || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── BROKER 3 (controller + broker) ──────────────────────────
+  kafka-3:
+    <<: *kafka-common
+    container_name: kafka-3
+    ports:
+      - "9292:9292"
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: HOST://:9292,DOCKER://:19092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9292,DOCKER://kafka-3:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9292 || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── BROKER 4 (pure broker) ──────────────────────────────────
+  kafka-4:
+    <<: *kafka-common
+    container_name: kafka-4
+    ports:
+      - "9392:9392"
+    depends_on:
+      kafka-1: { condition: service_healthy }
+    environment:
+      KAFKA_NODE_ID: 4
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: HOST://:9392,DOCKER://:19092
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9392,DOCKER://kafka-4:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # ── BROKER 5 (pure broker) ──────────────────────────────────
+  kafka-5:
+    <<: *kafka-common
+    container_name: kafka-5
+    ports:
+      - "9492:9492"
+    depends_on:
+      kafka-1: { condition: service_healthy }
+    environment:
+      KAFKA_NODE_ID: 5
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: HOST://:9492,DOCKER://:19092
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9492,DOCKER://kafka-5:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # ── BROKER 6 (pure broker) ──────────────────────────────────
+  kafka-6:
+    <<: *kafka-common
+    container_name: kafka-6
+    ports:
+      - "9592:9592"
+    depends_on:
+      kafka-1: { condition: service_healthy }
+    environment:
+      KAFKA_NODE_ID: 6
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: HOST://:9592,DOCKER://:19092
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9592,DOCKER://kafka-6:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # ── BROKER 7 (pure broker) ──────────────────────────────────
+  kafka-7:
+    <<: *kafka-common
+    container_name: kafka-7
+    ports:
+      - "9692:9692"
+    depends_on:
+      kafka-1: { condition: service_healthy }
+    environment:
+      KAFKA_NODE_ID: 7
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: HOST://:9692,DOCKER://:19092
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9692,DOCKER://kafka-7:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # ── KAFKA UI ────────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    depends_on:
+      kafka-1: { condition: service_healthy }
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-7-broker-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092

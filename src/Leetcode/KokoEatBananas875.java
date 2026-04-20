@@ -8,7 +8,7 @@ public class KokoEatBananas875 {
     class Solution {
         public int minEatingSpeed(int[] piles, int h) {
             int left = 1;
-            int right = 100000000;
+            int right = 100000000;  // instead of this , we can directly take max value of piles array
 
             while(left <=right) {
                 int mid = left + (right - left)/2;

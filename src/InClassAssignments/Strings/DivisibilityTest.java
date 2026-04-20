@@ -9,6 +9,11 @@ public class DivisibilityTest {
 
         String ans = isDivisibleBy30(s);
         System.out.println(ans);
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        String str = br.readLine();
+        System.out.println(isDivisible(str));
+ 
     }
 
     public static String isDivisibleBy30(String str) {
@@ -36,5 +41,23 @@ public class DivisibilityTest {
         } else {
             return "No";
         }
+    }
+     public static String isDivisible(String str){
+        if(str.length()==1 && str.charAt(0)=='0'){
+            return "Yes";
+        }else if(str.length()>1 && str.charAt(str.length()-1)=='0'){
+            int sum = 0;
+            for(int i=0; i<str.length(); i++){
+                sum += str.charAt(i)-'0';
+            }
+            if(sum%3==0){
+                return "Yes";
+            }else{
+                return "No";
+            }
+        }else{
+            return "No";
+        }
+
     }
 }

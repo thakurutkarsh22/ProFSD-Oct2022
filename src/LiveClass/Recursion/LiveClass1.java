@@ -13,9 +13,13 @@ public class LiveClass1 {
 //        printIncreasing(5);
 //        printDecreasingIncreasing(5);
 //        printDigitSkipsOdd(5);
-//        int factorialAns1 = factorial(3); // 6
+//        int factorialAns1 = factorial(3); // 6L
+
 //        int factorialAns2 = factorial(5); // 120
 //        System.out.println(factorialAns1 + "  : answer2 :   " + factorialAns2);
+ //       int fibbonaciAns = fibbonaci(7);
+ //       System.out.println(fibbonaciAns);
+        System.out.println(powerUpdate(2,10));
 //        int fibbonaciAns = fibbonaci(7);
 //        System.out.println(fibbonaciAns);
 
@@ -185,6 +189,30 @@ public class LiveClass1 {
         int finalAns = n * faithAns;
 
         return finalAns;
+    }
+
+    public static int powerUpdate(int n,int p){
+        if(p==0){
+            return 1;
+        }
+        int temp = 1;
+
+        if((p&1)==1){
+            temp *= n;
+        }
+        return temp*powerUpdate(n*n,p>>1);
+
+        /*
+        // using while loop
+        while(n>0){
+            if((p&1)==1){
+                temp *= n;
+            }
+            n *=n;
+            p = p>>1;
+        }
+        return temp;
+        */
     }
 
 

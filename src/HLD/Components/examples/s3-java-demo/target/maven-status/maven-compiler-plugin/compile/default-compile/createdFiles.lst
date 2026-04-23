@@ -1,0 +1,7 @@
+com/demo/s3/S3Config.class
+com/demo/s3/ConceptExplainer.class
+com/demo/s3/S3LifecycleDemo.class
+com/demo/s3/S3VersioningDemo.class
+com/demo/s3/S3Downloader.class
+com/demo/s3/S3Playground.class
+com/demo/s3/S3Uploader.class

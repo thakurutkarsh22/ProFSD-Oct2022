@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────
+# diagrams (draw.io / diagrams.net)
+# ─────────────────────────────────────────────────────────────
+# Source files: text (so PR reviewers can sanity-check XML diffs)
+*.drawio        text eol=lf
+*.drawio.xml    text eol=lf
+
+# Editable-but-renderable artifacts: treat as binary so the
+# embedded mxGraphModel XML doesn't blow up PR diffs.
+*.drawio.svg    binary
+*.drawio.png    binary
+
+# ─────────────────────────────────────────────────────────────
+# excalidraw (optional, since the extension is also recommended)
+# ─────────────────────────────────────────────────────────────
+*.excalidraw           text eol=lf
+*.excalidraw.svg       binary
+*.excalidraw.png       binary
+
+# ─────────────────────────────────────────────────────────────
+# Markdown
+# ─────────────────────────────────────────────────────────────
+*.md  text eol=lf

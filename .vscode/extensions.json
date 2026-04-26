@@ -1,5 +1,7 @@
 {
   "recommendations": [
-    "bierner.markdown-mermaid"
+    "bierner.markdown-mermaid",
+    "hediet.vscode-drawio",
+    "pomdtr.excalidraw-editor"
   ]
 }

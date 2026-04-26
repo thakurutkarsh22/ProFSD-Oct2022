@@ -7,6 +7,8 @@ A practical categorisation of system-design interview problems. Every real probl
 > - **Signature gotcha** — the one thing the interviewer is usually fishing for. Say it out loud early.
 > - **Core stack** — the components that tend to dominate the whiteboard.
 > - **Problems** — concrete questions. Links point to write-ups in this repo. `TODO` marks questions worth adding.
+>
+> **Diagrams:** architecture diagrams live in [`./assets/`](./assets/README.md) as editable `.drawio` / `.drawio.svg` files. Open them in Cursor/VS Code (the workspace recommends the `hediet.vscode-drawio` extension) or in [diagrams.net](https://app.diagrams.net/).
 
 ## Table of Contents
 
@@ -252,6 +254,7 @@ A practical categorisation of system-design interview problems. Every real probl
 
 | Problem | Difficulty | File |
 |---------|-----------|------|
+| High-Precision Distributed Job Scheduler (10K/s, ±2s) | Hard | [InterviewProblems/03-HighPrecisionDistributedJobScheduler.md](03-HighPrecisionDistributedJobScheduler.md) |
 | Distributed Job Scheduler (Airflow / Temporal) | Hard | _TODO_ |
 | Cron service at scale | Medium | _TODO_ |
 | CI/CD system (Jenkins / GitHub Actions) | Hard | see [02-DesignVercel.md §7.2](02-DesignVercel.md#72-cicd--build-pipeline) |
@@ -333,4 +336,4 @@ flowchart LR
 - **[src/HLD/03-AdvancedConcepts/](../03-AdvancedConcepts/)** — sagas, CRDTs, quorum, Raft/Paxos.
 - **[src/HLD/Components/](../Components/)** — deep dives on Kafka, SQS, SNS, Kinesis, S3, etc. with runnable Java demos.
 - **[src/HLD/04-DesignEasy/](../04-DesignEasy/)**, **[05-DesignMedium/](../05-DesignMedium/)**, **[06-DesignHard/](../06-DesignHard/)** — problems organised by difficulty.
-- **[src/HLD/InterviewProblems/](.)** — real interview transcripts and deep-dives. Start with [01-TelecomCDRSpikeDetection.md](01-TelecomCDRSpikeDetection.md).
+- **[src/HLD/InterviewProblems/](.)** — real interview transcripts and deep-dives. Start with [01-TelecomCDRSpikeDetection.md](01-TelecomCDRSpikeDetection.md), [02-DesignVercel.md](02-DesignVercel.md), and [03-HighPrecisionDistributedJobScheduler.md](03-HighPrecisionDistributedJobScheduler.md).

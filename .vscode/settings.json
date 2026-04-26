@@ -1,0 +1,16 @@
+{
+  "hediet.vscode-drawio.theme": "Kennedy",
+  "hediet.vscode-drawio.codeLinkActivated": true,
+  "hediet.vscode-drawio.resizeImages": null,
+  "hediet.vscode-drawio.local-storage": "{}",
+
+  "workbench.editorAssociations": {
+    "*.drawio": "hediet.vscode-drawio",
+    "*.drawio.svg": "hediet.vscode-drawio",
+    "*.drawio.png": "hediet.vscode-drawio"
+  },
+
+  "files.associations": {
+    "*.drawio": "xml"
+  }
+}

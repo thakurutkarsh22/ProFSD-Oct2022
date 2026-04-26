@@ -1,0 +1,327 @@
+<mxfile host="app.diagrams.net" agent="cursor" version="24.0.0" type="device">
+  <diagram name="HLD-v3-Numbered-Flows" id="hld-v3">
+    <mxGraphModel dx="2400" dy="1700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Distributed Job Scheduler — HLD v3 (Numbered, Color-Coded Flows)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="2300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="10k avg / 40k peak QPS  ·  p99 fire latency ≤ 2s  ·  multi-tenant" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=13;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="50" width="2300" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="client" value="Client&#10;&#10;mobile · web · API" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="100" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="apigw" value="API Gateway&#10;&#10;auth · per-tenant rate limit · idempotency" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="100" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jobsvc_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="694" y="232" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="jobsvc_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="688" y="226" width="220" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="jobsvc" value="Job Service (N pods)&#10;&#10;writes Postgres + outbox txn&#10;best-effort ZADD ≤ 5min" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="220" width="220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="watcher_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="74" y="392" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="watcher_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="68" y="386" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="watcher" value="Watcher (N pods)&#10;&#10;1-min tick · 5-min lookahead&#10;Postgres → Redis ZSET&#10;ZADD … NX (idempotent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="380" width="220" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="outbox_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="334" y="392" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="outbox_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="328" y="386" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="outbox_publisher" value="Outbox Publisher (N pods)&#10;&#10;tails Postgres outbox&#10;→ Kafka (at-least-once)&#10;dedupe by job_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="380" width="220" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="postgres" value="Postgres (Primary + Replicas)&#10;&#10;jobs · outbox · cron · executions&#10;sharded by (shard, fire_minute)&#10;source of truth" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="370" width="320" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cron_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="994" y="392" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="cron_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="988" y="386" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="cron_emitter" value="Cron Emitter (N pods)&#10;&#10;safety net only —&#10;scans cron jobs missing&#10;future occurrence,&#10;inserts one (idempotent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="980" y="380" width="240" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sweeper_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1274" y="392" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="sweeper_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1268" y="386" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="sweeper" value="Sweeper (N pods)&#10;&#10;finds expired leases&#10;requeues stuck RUNNING&#10;finalizes CANCEL_REQUESTED&#10;after grace period" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="380" width="240" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="etcd_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1554" y="232" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="etcd_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1548" y="226" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="etcd" value="etcd cluster (3 nodes)&#10;&#10;shard leases (TTL=3s, hb=1s)&#10;owners: Watcher · Picker ·&#10;Sweeper · Outbox · CronEm" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="220" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="redis_outer" value="Redis Cluster (sharded, M masters + replicas)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#b85450;dashed=1;dashPattern=8 4;fontSize=12;fontStyle=1;verticalAlign=top;fontColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="320" y="570" width="1180" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="redis_z0" value="ZSET&#10;due:{shard0}&#10;score = fire_at_ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="610" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="redis_z1" value="ZSET&#10;due:{shard1}&#10;score = fire_at_ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="580" y="610" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="redis_z2" value="ZSET&#10;due:{shardN}&#10;score = fire_at_ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="810" y="610" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="redis_cancel" value="STRING cancel:{job_id}  (TTL=1h)&#10;fast cancel-flag channel — polled by Executor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad7ac;strokeColor=#b46504;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="610" width="430" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="redis_label" value="3 ZSET shards: hot tier — only fires within next 5 min" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=2;fontColor=#666666;align=center;" vertex="1" parent="1">
+          <mxGeometry x="350" y="690" width="660" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="picker_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="734" y="812" width="380" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="picker_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="728" y="806" width="380" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="picker" value="Dispatcher Picker (N pods)&#10;&#10;100 ms tick on owned shards&#10;Lua: ZRANGEBYSCORE + ZREM (atomic)&#10;produces to Kafka with key=job_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="800" width="380" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kafka_dispatch" value="Kafka topic&#10;scheduler.dispatch&#10;&#10;key=job_id (idempotent)&#10;acks=all" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="980" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kafka_dlq" value="Kafka topic&#10;scheduler.dlq&#10;&#10;poison messages&#10;manual intervention" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="980" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="consumer_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="554" y="1172" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="548" y="1166" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer" value="Job Consumer (N pods)&#10;&#10;polls Kafka · runs claim CAS&#10;routes by job_type to Executor pool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="1160" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="executor_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="894" y="1172" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="executor_m" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="888" y="1166" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="executor" value="Executor (N pods, sandboxed)&#10;&#10;runs user code · renews lease · polls cancel:{id}&#10;writes terminal status (txn)&#10;cron: INSERT next + UPDATE SUCCEEDED in 1 txn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="1160" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_box" value="Flow Legend&#10;7 numbered, color-coded flows" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=14;fontStyle=1;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="380" width="700" height="900" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_a_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="450" as="sourcePoint" />
+            <mxPoint x="1770" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_a" value="A — Good / Scheduled  (12 steps)&#10;normal POST /jobs · fire_at &gt; now" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#1976D2;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="430" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_b_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="520" as="sourcePoint" />
+            <mxPoint x="1770" y="520" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_b" value="B — Immediate / runNow  (5 steps)&#10;outbox path bypasses ZSET" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="500" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_c_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="590" as="sourcePoint" />
+            <mxPoint x="1770" y="590" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_c" value="C — Cancel  (4 steps)&#10;CAS + Redis flag · cooperative" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#C62828;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="570" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_d_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="660" as="sourcePoint" />
+            <mxPoint x="1770" y="660" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_d" value="D — Error / Retry  (2 steps)&#10;exp backoff · max_attempts → DLQ" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#EF6C00;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="640" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_e_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="730" as="sourcePoint" />
+            <mxPoint x="1770" y="730" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_e" value="E — Cron / Recurring  (2 steps)&#10;Executor inserts NEXT in same txn as SUCCEEDED&#10;Cron Emitter is safety-net (E2)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="700" width="540" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_f_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="810" as="sourcePoint" />
+            <mxPoint x="1770" y="810" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_f" value="F — Sweeper / Stuck  (1 step)&#10;lease expiry → re-queue" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#4E342E;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="790" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_g_line" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=3;dashed=1;dashPattern=6 4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1670" y="880" as="sourcePoint" />
+            <mxPoint x="1770" y="880" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_g" value="G — Control plane (etcd, dashed)&#10;shard leases · failover ≤ 3s" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#455A64;" vertex="1" parent="1">
+          <mxGeometry x="1790" y="860" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_notes" value="Reading guide:&#10;&#10;• Solid arrows = data path  ·  Dashed arrows = control / leases / best-effort&#10;• Stacked rectangles = horizontally scaled clusters (N pods)&#10;• Shared paths (Client → API GW → Job Svc) labeled with multiple flow IDs&#10;• Step IDs: &lt;flow-letter&gt;&lt;step-number&gt;,  e.g. A3 = Flow A, step 3&#10;• Flow A is the canonical happy path. Flows B–F are variations or recoveries.&#10;• Flow G is the control-plane (lease management); arrows omitted from main diagram&#10;  for clarity — etcd connects to Watcher · Cron Emitter · Outbox Pub. · Sweeper · Picker.&#10;&#10;Step Sequence:&#10;&#10;A (Good / Scheduled, fire_at &gt; now):&#10;   A1 Client→APIGW · A2 APIGW→JobSvc · A3 JobSvc INSERT (Postgres txn)&#10;   A4 JobSvc ZADD…NX (best-effort, only if ≤ 5min)&#10;   A5 Watcher 1-min scan · A6 Watcher ZADD…NX (canonical promote)&#10;   A7 Picker Lua atomic pop · A8 Picker→Kafka produce&#10;   A9 Kafka→Consumer poll · A10 Consumer claim CAS · A11 Consumer→Executor&#10;   A12 Executor→Postgres SUCCEEDED&#10;&#10;B (Immediate / runNow): B3 INSERT job + outbox in 1 txn → B4 OutboxPub tails →&#10;   B5 produce to Kafka → reuse A9–A12&#10;&#10;C (Cancel): C3 CAS to CANCEL_REQUESTED → C4 SET cancel:{id} →&#10;   C5 Executor polls → C6 CAS to CANCELLED&#10;&#10;D (Error / Retry): D1 Executor on error: UPDATE→SCHEDULED, attempts++, backoff →&#10;   D3 produce to scheduler.dlq on max_attempts&#10;&#10;E (Cron):  E1 Executor INSERTS next + UPDATEs SUCCEEDED in SAME txn (primary)&#10;   E2 Cron Emitter scans for cron jobs missing future occurrence (safety net only)&#10;&#10;F (Sweeper): F1 Sweeper requeues stuck RUNNING jobs (lease expired) →&#10;    re-enters at A5" style="text;html=1;strokeColor=#cccccc;fillColor=#fafafa;align=left;verticalAlign=top;fontSize=10;fontStyle=0;fontColor=#222222;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="930" width="660" height="340" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_entry1" value="A1 · B1 · C1: Submit / runNow / Cancel" style="endArrow=classic;html=1;rounded=0;strokeColor=#333333;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#333333;" edge="1" parent="1" source="client" target="apigw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_entry2" value="A2 · B2 · C2: forward" style="endArrow=classic;html=1;rounded=0;strokeColor=#333333;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#333333;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="apigw" target="jobsvc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a3" value="A3: INSERT job (txn, status=SCHEDULED)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=0.4;exitY=1;exitDx=0;exitDy=0;entryX=0.4;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="jobsvc" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a4" value="A4: ZADD…NX (best-effort, fire_at ≤ 5min)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#1976D2;dashed=1;dashPattern=4 4;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="jobsvc" target="redis_outer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a5" value="A5 · D2 · F2: 1-min scan&#10;(5-min lookahead)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="watcher" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a6" value="A6: ZADD…NX (canonical promote)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="watcher" target="redis_outer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a7" value="A7: Lua atomic pop&#10;ZRANGEBYSCORE + ZREM" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="picker" target="redis_outer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a8" value="A8: produce&#10;key=job_id" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="picker" target="kafka_dispatch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a9" value="A9: poll" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="kafka_dispatch" target="consumer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a10" value="A10: claim CAS&#10;QUEUED → RUNNING + lease" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#1976D2;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a11" value="A11: dispatch" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="executor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_a12" value="A12: SUCCEEDED (terminal)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#1976D2;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="executor" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_b3" value="B3: INSERT job + outbox&#10;(SAME Postgres txn)" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#2E7D32;exitX=0.6;exitY=1;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="jobsvc" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_b4" value="B4: tail outbox" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#2E7D32;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="outbox_publisher" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_b5" value="B5: produce&#10;(at-least-once)" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#2E7D32;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="outbox_publisher" target="kafka_dispatch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_c3" value="C3: CAS → CANCEL_REQUESTED" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#C62828;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.2;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="jobsvc" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_c4" value="C4: SET cancel:{id} EX 3600&#10;(fast, best-effort)" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#C62828;dashed=1;dashPattern=4 4;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="jobsvc" target="redis_cancel">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_c5" value="C5: poll cancel:{id}&#10;every 1–5s during run" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#C62828;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="redis_cancel" target="executor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_c6" value="C6: CAS&#10;CANCEL_REQUESTED → CANCELLED" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#C62828;edgeStyle=orthogonalEdgeStyle;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="executor" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_d1" value="D1: UPDATE on error&#10;status → SCHEDULED&#10;attempts++, fire_at = now+backoff" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#EF6C00;edgeStyle=orthogonalEdgeStyle;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="executor" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_d3" value="D3: produce to DLQ&#10;(max_attempts reached)" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#EF6C00;exitX=0.7;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="executor" target="kafka_dlq">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_e1" value="E1: INSERT next occurrence + UPDATE SUCCEEDED&#10;(SAME txn — primary cron path)" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#6A1B9A;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="executor" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_e2" value="E2: scan + insert missing next&#10;(safety net only — periodic)" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=11;fontStyle=2;fontColor=#6A1B9A;dashed=1;dashPattern=4 4;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cron_emitter" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_f1" value="F1: requeue stuck RUNNING&#10;WHERE lease_expires_at &lt; now()&#10;UPDATE → SCHEDULED" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#4E342E;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="sweeper" target="postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arr_g_etcd" value="G: shard leases&#10;(TTL=3s, hb=1s)" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=1.5;fontSize=10;fontStyle=2;fontColor=#455A64;dashed=1;dashPattern=6 4;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="etcd" target="sweeper">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="footer" value="v3 fixes from v1: Picker (100ms tick) replaces in-process timers · etcd shard leases for HA failover · Outbox Publisher kills dual-write · Executor inserts cron next-occurrence in same txn (Cron Emitter is safety net) · best-effort ZADD for sub-5-min latency, Watcher is canonical promoter" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=11;fontStyle=2;fontColor=#555555;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1300" width="1580" height="40" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

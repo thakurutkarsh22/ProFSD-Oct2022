@@ -44,6 +44,17 @@
 │  └── Microservices vs Monolith                                       │
 │                         │                                            │
 │                         ▼                                            │
+│  PHASE 3B: ALGORITHMS IN FAMOUS DESIGNS (parallel / refresh)        │
+│  └── Rate limits, hashing, LSM, Merkle, gossip, spatial, streams      │
+│      (compact notes + links) → 07-SystemDesignAlgorithms/            │
+│                         │                                            │
+│                         ▼                                            │
+│  PHASE 3C: COMMON PROBLEMS (failure-mode pattern library)            │
+│  └── Thundering herd, hot keys, SPOF, retry storms, idempotency,     │
+│      distributed locks, CDC, multi-region, noisy neighbor, …         │
+│      → 08-CommonProblems/                                            │
+│                         │                                            │
+│                         ▼                                            │
 │  PHASE 4: DESIGN QUESTIONS - EASY (Week 7-8)                        │
 │  ├── Design URL Shortener (TinyURL)                                  │
 │  ├── Design Paste Bin                                                │
@@ -111,6 +122,19 @@
 | 16 | Search & Indexing | [03-AdvancedConcepts/04-SearchAndIndexing.md](03-AdvancedConcepts/04-SearchAndIndexing.md) | 2 hrs |
 | 17 | Stream Processing | [03-AdvancedConcepts/05-StreamProcessing.md](03-AdvancedConcepts/05-StreamProcessing.md) | 2 hrs |
 | 18 | Microservices Architecture | [03-AdvancedConcepts/06-Microservices.md](03-AdvancedConcepts/06-Microservices.md) | 2 hrs |
+
+### Algorithms in Famous System Designs [Interview map]
+| # | Topic | File | Time |
+|---|-------|------|------|
+| — | Index & checklist | [07-SystemDesignAlgorithms/README.md](07-SystemDesignAlgorithms/README.md) | 1 hr |
+| — | Rate limiting, hashing, LSM, Merkle, gossip, spatial, tries, streams, consensus (short notes) | [07-SystemDesignAlgorithms/](07-SystemDesignAlgorithms/) | 3–5 hrs (pick topics) |
+
+### Common Distributed Systems Problems [Interview cheat-sheet]
+| # | Topic | File | Level |
+|---|-------|------|-------|
+| — | Index (27 common failure modes / design dilemmas) | [08-CommonProblems/README.md](08-CommonProblems/README.md) | All |
+| — | Thundering herd, cache stampede, N+1, hot keys, SPOF, retry storms, idempotency, RAW, distributed locks, rate limiting, DLQ, schema migration | [08-CommonProblems/](08-CommonProblems/) | Beginner-Intermediate |
+| — | Monolith splitting, multi-region failover, active-active conflicts, CDC vs dual-writes, search freshness vs ranking, noisy neighbor | [08-CommonProblems/](08-CommonProblems/) | Advanced |
 
 ### Phase 4: Design Questions - Easy
 | # | Question | File | Frequency |
@@ -259,28 +283,35 @@
 
 ## Deep Dive Components
 
-### Async Messaging
+### Async Messaging & Streaming
 | # | Component | File | Time |
 |---|-----------|------|------|
 | 42 | Apache Kafka | [Components/01-Kafka.md](Components/01-Kafka.md) | 6-8 hrs |
 | 43 | Amazon SQS | [Components/02-SQS.md](Components/02-SQS.md) | 5-7 hrs |
 | 44 | Amazon SNS | [Components/03-SNS.md](Components/03-SNS.md) | 5-7 hrs |
 | 45 | RabbitMQ | [Components/04-RabbitMQ.md](Components/04-RabbitMQ.md) | 6-8 hrs |
+| 49 | Amazon Kinesis | [Components/08-Kinesis.md](Components/08-Kinesis.md) | 5-7 hrs |
 
 ### Cache
 | # | Component | File | Time |
 |---|-----------|------|------|
 | 46 | Redis | [Components/05-Redis.md](Components/05-Redis.md) | 6-8 hrs |
 
-### Storage
+### Storage / Vector DB
 | # | Component | File | Time |
 |---|-----------|------|------|
 | 47 | Amazon S3 | [Components/06-S3.md](Components/06-S3.md) | 6-8 hrs |
+| 50 | Milvus (Vector DB) | [Components/09-Milvus.md](Components/09-Milvus.md) | 6-8 hrs |
 
 ### Observability
 | # | Component | File | Time |
 |---|-----------|------|------|
 | 48 | Grafana & LGTM Stack | [Components/07-Grafana.md](Components/07-Grafana.md) | 6-8 hrs |
+
+### Compute & Data Processing
+| # | Component | File | Time |
+|---|-----------|------|------|
+| 51 | Apache Spark | [Components/10-Spark.md](Components/10-Spark.md) | 6-8 hrs |
 
 ---
 

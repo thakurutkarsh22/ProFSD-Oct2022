@@ -192,14 +192,32 @@ Job {
   string   cron_expr           // e.g. "0 9 * * *"
   string   cron_tz             // e.g. "Asia/Kolkata"
   // State
-  enum     status              // SCHEDULED | IN_FLIGHT | SUCCEEDED | FAILED | CANCELED | DLQ
+  enum     status              // SCHEDULED | IN_FLIGHT/RUNNING | SUCCEEDED | FAILED | CANCELED | DLQ
   int      attempts
   long     created_at_ms
   long     updated_at_ms
   long     last_fired_at_ms
   string   last_error
+  // Executor lease (required by §10.6 — heartbeat-extended, sweeper-checked)
+  string   lease_owner         // e.g. "executor-pod-7-uuid" — NULL when not RUNNING
+  long     lease_until_ms      // absolute wall-clock deadline (UTC epoch ms); NULL when not RUNNING
 }
 ```
+
+> **Postgres DDL form** (matches the canonical record above; this is the migration the V2 design assumes is already applied):
+>
+> ```sql
+> ALTER TABLE jobs
+>   ADD COLUMN lease_owner   text,         -- e.g. "executor-pod-7-uuid"
+>   ADD COLUMN lease_until   timestamptz;  -- absolute wall-clock deadline
+>
+> -- Index used by the Stuck-IN_FLIGHT Sweeper (§10.5) — partial index keeps it tiny:
+> CREATE INDEX jobs_running_lease_idx
+>   ON jobs (shard, lease_until)
+>   WHERE status = 'RUNNING';
+> ```
+>
+> Both columns are `NULL` for any non-`RUNNING` row (the executor clears them on terminal write — see §10.6.3, step 4). The CAS guard `AND lease_owner = :me` in heartbeat / terminal writes (§10.6.7) is what makes preemption safe.
 
 ### 7.2 Partitioning
 
@@ -563,12 +581,424 @@ On pod start (or after taking over a shard):
 
 ### 10.5 "Stuck `IN_FLIGHT`" sweeper
 
-A separate background job per shard looks for rows with `status = IN_FLIGHT` and `updated_at_ms < now - 5 min` (i.e., the dispatcher crashed between `ZREM` and DB update), and:
+The Sweeper is the **reaper that turns dead leases back into work** — the only mechanism in the design that guarantees a crashed executor's job will eventually be retried, *without* falsely killing legitimately long-running jobs. It is the at-least-once safety net for everything that happens after the Picker's `ZREM`.
 
-- If the Kafka dispatch message is confirmed (check execution log), mark `SUCCEEDED/FAILED`.
-- Otherwise, flip back to `SCHEDULED` with `attempts++` and re-promote.
+#### 10.5.1 What the V2 drawio box says (verbatim)
 
-This is the at-least-once safety net.
+```
+Stuck-IN_FLIGHT Sweeper
+━━━━━━━━━━━━━━
+every N min:
+  status = RUNNING AND
+  lease_until < now
+  → reset to SCHEDULED
+     (attempts++)
+
+Lease, not 15s timer.
+```
+
+Key invariant #6 in the same diagram repeats the point: *"Lease + heartbeat for stuck jobs, NOT a 15-s wall clock"*.
+
+#### 10.5.2 What it does — mechanically
+
+A background process (one owner per shard, leased through etcd, like every other shard-bound role in the system) wakes up **every N minutes** and runs essentially:
+
+```sql
+UPDATE jobs
+   SET status      = 'SCHEDULED',
+       attempts    = attempts + 1,
+       fire_at     = now() + backoff(attempts),
+       lease_until = NULL,
+       lease_owner = NULL
+ WHERE status      = 'RUNNING'           -- aka IN_FLIGHT
+   AND lease_until < now()               -- the executor's lease has expired
+   AND shard       = :owned_shard;
+```
+
+Anything it flips back to `SCHEDULED` is then rediscovered by the **Watcher** on its next 1-minute tick → re-promoted into the Redis `ZSET` → re-dispatched through the normal hot path. The sweeper itself **never** touches Redis or Kafka — it only resets state in the source-of-truth Postgres row.
+
+#### 10.5.3 What it actually catches
+
+It closes the gaps that the **outbox + idempotent producer** do *not* cover. Outbox solves only the *submit → Kafka* half (it kills "stuck QUEUED" rows on the produce side). Once the executor has the job, there is no transactional way to bind "user code completed" to "DB row updated" to "Kafka offset committed" — so the system's contract is **at-least-once with bounded recovery time**, and the sweeper is what enforces the bound.
+
+The four executor-side failure modes it covers:
+
+1. **Executor pod crashes mid-run.** It claimed the job (`status=RUNNING`, `lease_until=now+60s`), started executing, then the pod died. No one is heartbeating the lease anymore. After `lease_until` expires, the row is "stuck" — the sweeper re-promotes it.
+2. **Executor hangs / GC pause / network partition.** Alive but not heartbeating → lease expires → sweeper re-promotes. When the original eventually wakes up and tries to write `SUCCEEDED`, the CAS on `status=RUNNING AND lease_owner=me` fails, so the duplicate execution side-effect is bounded by the executor's `idempotency_key = job_id`.
+3. **Dispatcher crashed between `ZREM` and the Kafka produce** (or before the async DB write to `RUNNING`). The job is now "lost": not in Redis, not on Kafka, sitting at `SCHEDULED` (or already `RUNNING` but never picked up). The sweeper plus the Watcher's 1-min scan re-promotes it.
+4. **Worker `SUCCEEDED` write to DB failed but Kafka offset committed.** Row stays `RUNNING` past `lease_until` — sweeper re-promotes; executor idempotency dedupes the rerun on the target.
+
+#### 10.5.4 Why "lease, not 15-s timer" — the whole point
+
+A naive scheduler uses a fixed wall-clock threshold like *"if it's been RUNNING for >15 s, restart it"*. That is wrong because it cannot distinguish **stuck** from **legitimately long-running**:
+
+| Without lease (wall-clock)                              | With lease + heartbeat                                                                  |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 30-min ETL job → killed and re-fired every 15 s         | Executor heartbeats every 10 s, extends `lease_until = now + 60 s` → stays alive        |
+| Crashed pod → caught only after the global threshold    | Crashed pod stops heartbeating → `lease_until` expires within one lease window          |
+| One global tunable for all jobs                         | Per-job lease duration; long jobs simply renew                                          |
+
+So the rule is:
+
+- **Long-running, healthy job** → keeps extending its lease → sweeper never touches it.
+- **Crashed / hung executor** → lease decays → sweeper re-promotes it.
+
+(See §10.6 for the full lease + heartbeat protocol — pseudocode, timelines, common expiry reasons. §21 Q7 has the interview-defense one-liner.)
+
+#### 10.5.5 Why it is still required *despite* outbox + idempotent producer + executor idempotency key
+
+People hear "outbox + idempotent producer + idempotency key = exactly-once" and assume the sweeper is redundant. It is not — those three solve **different parts of the pipeline**:
+
+| Mechanism                            | Closes the gap…                                            |
+| ------------------------------------ | ---------------------------------------------------------- |
+| Transactional outbox                 | between Postgres commit and Kafka produce                  |
+| Idempotent Kafka producer (`acks=all`, `enable.idempotence=true`) | between produce attempts on the wire                       |
+| Executor-side `idempotency_key = job_id` | duplicate side-effects on the *target* of a re-fire        |
+| **Stuck-IN_FLIGHT Sweeper**          | **executor crashes / hangs / partial writes after claim**  |
+
+Without the sweeper, a crashed executor's row stays `RUNNING` forever and the job silently never executes again.
+
+#### 10.5.6 Where it sits in V2
+
+- It owns its shard via an **etcd lease** — same control-plane mechanism as Watcher / Picker / Outbox Publisher / Cron Emitter (Q11, §21).
+- It only touches **Postgres** (the source of truth). It does *not* read or write Redis or Kafka directly — it just resets state, and the existing Watcher → ZSET → Picker → Kafka path handles the actual re-dispatch.
+- Cadence (`N` minutes) is a tradeoff: shorter = faster recovery but more wasted scans; **typical setting 1–5 min** for the SLO this design targets. It is **not** on the critical latency path — the lease window already bounds time-to-detection.
+- For ordering-on-`fire_at` correctness, the sweeper writes `fire_at = now() + backoff(attempts)` so retried jobs get a fresh score in the ZSET on re-promotion (rather than re-firing in the past).
+
+#### 10.5.7 Tuning checklist
+
+- `lease_duration` ≥ p99 expected runtime of the job class. Too short → false re-fires (which idempotency tolerates but burns target capacity); too long → slow detection of real crashes.
+- `heartbeat_interval` ≤ `lease_duration / 3`. Standard rule (TTL/3) so a single missed heartbeat does not kill the lease.
+- Sweeper cadence ≤ 1 min for SLO-sensitive tenants; 5 min is fine for batch.
+- Backoff on `attempts` — exponential with jitter — to avoid thundering-herd retries across a shard after a mass executor failure.
+- Cap `attempts`. After `max_attempts` the sweeper should route to **DLQ** (`scheduler.dlq` in V2), not loop forever.
+
+---
+
+### 10.6 Executor Lease & Heartbeat Protocol — How a long-running job stays alive
+
+The Sweeper (§10.5) is half the story. The other half is the executor's **heartbeat protocol** — the only thing that keeps the lease alive while user code runs. The single most common point of confusion is *"how does a long-running task update its lease?"* The answer is: **it doesn't. A separate thread does, in the background.**
+
+#### 10.6.1 Mental model — in one sentence
+
+> The job has **two threads inside the executor pod**: the **worker thread** running the user payload, and the **heartbeat thread** doing nothing but `UPDATE jobs SET lease_until = now()+60s WHERE id=? AND lease_owner=me` every 10 seconds.
+
+The user code never thinks about the lease. It just runs. The heartbeat thread runs in parallel and keeps the lease fresh. *That's the entire trick.*
+
+#### 10.6.2 What "the lease" actually is
+
+It is just two columns on the `jobs` row in Postgres — defined in the canonical Job record in **§7.1** and added by the migration shown there:
+
+```sql
+-- (already in §7.1; reproduced here for context)
+ALTER TABLE jobs
+  ADD COLUMN lease_owner   text,         -- e.g. "executor-pod-7-uuid"
+  ADD COLUMN lease_until   timestamptz;  -- absolute wall-clock deadline
+
+CREATE INDEX jobs_running_lease_idx
+  ON jobs (shard, lease_until)
+  WHERE status = 'RUNNING';              -- the index the Sweeper scans (§10.5)
+```
+
+So *"extending the lease"* = running an `UPDATE` that bumps `lease_until` forward. There is no daemon, no Redis lock, no fancy lease object — just a column on a row, with one partial index so the Sweeper can find expired leases in O(matches), not O(table).
+
+#### 10.6.3 Full lifecycle in pseudocode
+
+```java
+class Executor {
+
+    // ============ STEP 1: claim the job (CAS) ============
+    Job claim(jobId) {
+        int rows = pg.exec("""
+            UPDATE jobs
+               SET status      = 'RUNNING',
+                   lease_owner = :me,
+                   lease_until = now() + INTERVAL '60 seconds',
+                   attempts    = attempts + 1
+             WHERE id          = :jobId
+               AND status      = 'QUEUED'        -- ← CAS guard
+        """, me=this.podId, jobId=jobId);
+
+        if (rows != 1) throw new ClaimLost();    // someone else got it first
+        return loadJob(jobId);
+    }
+
+    // ============ STEP 2: run the job ============
+    void execute(Job job) {
+
+        // 2a) Start the heartbeat thread BEFORE running user code.
+        //     This is the only thing that keeps the lease alive.
+        ScheduledFuture<?> hb = scheduler.scheduleAtFixedRate(
+            () -> heartbeat(job.id),
+            /* initial delay */ 10, SECONDS,
+            /* period         */ 10, SECONDS    // every 10 s, forever
+        );
+
+        try {
+            // 2b) Run the actual user payload (1 s … 1 hour).
+            //     This thread knows NOTHING about the lease.
+            UserCode.run(job.payload);
+
+            // 2c) On success, write the terminal state with another CAS.
+            commitTerminal(job.id, "SUCCEEDED");
+
+        } catch (Exception e) {
+            commitTerminal(job.id, "FAILED");
+        } finally {
+            // 2d) STOP the heartbeat thread.
+            hb.cancel(true);
+        }
+    }
+
+    // ============ STEP 3: the heartbeat ============
+    void heartbeat(jobId) {
+        int rows = pg.exec("""
+            UPDATE jobs
+               SET lease_until = now() + INTERVAL '60 seconds'
+             WHERE id          = :jobId
+               AND lease_owner = :me            -- ← still mine?
+               AND status      = 'RUNNING'
+        """, me=this.podId, jobId=jobId);
+
+        if (rows == 0) {
+            // We lost the lease (sweeper re-promoted it elsewhere, or someone
+            // else took it). Stop doing work — anything we write now will be
+            // rejected by the terminal CAS anyway.
+            UserCode.cancel();
+        }
+    }
+
+    // ============ STEP 4: terminal write — CAS again ============
+    void commitTerminal(jobId, finalStatus) {
+        int rows = pg.exec("""
+            UPDATE jobs
+               SET status      = :finalStatus,
+                   lease_until = NULL,
+                   lease_owner = NULL
+             WHERE id          = :jobId
+               AND lease_owner = :me            -- ← still mine?
+               AND status      = 'RUNNING'
+        """, me=this.podId, finalStatus=finalStatus, jobId=jobId);
+
+        if (rows == 0) {
+            // Lease expired sometime during the run; sweeper re-promoted it.
+            // Our write just became a "zombie write". Don't fight it.
+            log.warn("lost lease — terminal write rejected, treating as duplicate");
+        }
+    }
+}
+```
+
+That's the whole protocol: **five SQL statements and one timer.**
+
+#### 10.6.4 Timeline — the happy path
+
+A 5-minute job, with `lease_duration = 60 s` and `heartbeat_interval = 10 s`:
+
+```
+Wall clock (s):  0      10     20     30     40     50  ...  290    300
+                 │      │      │      │      │      │        │      │
+Worker thread:   ────────────  user code runs  ─────────────────────  done
+Heartbeat thrd:  claim  HB     HB     HB     HB     HB  ...  HB     terminal
+                  ↓     ↓      ↓      ↓      ↓      ↓        ↓      ↓
+lease_until in   60    70     80     90    100    110  ...  350    NULL
+Postgres (s):
+```
+
+At every tick, `lease_until` is **always at least 50 seconds ahead of `now()`** (worst case: just before the next heartbeat). The user code can run for hours; as long as the heartbeat thread keeps ticking, the lease never expires. *That* is the meaning of "lease, not 15-s timer" — the lease bound is on **heartbeat silence**, not on **work duration**.
+
+#### 10.6.5 Timeline — the crash path
+
+Same job, but the pod dies at T=120 s:
+
+```
+Wall clock (s):    0      60     120    130    140  ...  175    180
+                   │      │      │      │      │         │      │
+Worker thread:     ────  user code  ──── 💥 crash (no terminal write)
+Heartbeat thrd:    claim  HB     HB     ✗      ✗         ✗
+                    ↓     ↓      ↓
+lease_until:       60    120    180        (frozen)  ─────────► EXPIRED at 180
+
+Sweeper, T≈181:    UPDATE … SET status='SCHEDULED' WHERE lease_until < now()
+                   → row goes back into the hot path
+                   → re-fired by Watcher → ZSET → Picker → Kafka → new executor
+```
+
+The lease was extended to **180 s** by the last heartbeat at T=120. From T=120 to T=180 the row is technically `RUNNING` but no one is making progress — that 60-second window is the **detection latency** for a crash, and it is bounded by `lease_duration`. After T=180 the sweeper re-promotes it and a fresh executor picks it up.
+
+#### 10.6.6 The heartbeat **must** run on a different thread / goroutine
+
+This is the #1 implementation bug. If the heartbeat runs on the same thread as user code, **any blocking call expires your lease**. Concretely:
+
+| Runtime | How the heartbeat must run |
+|---|---|
+| **Java**       | `ScheduledExecutorService` with its own thread pool (1 thread is enough) |
+| **Go**         | a `time.Ticker` running in a separate goroutine |
+| **Python**     | `threading.Thread` (the GIL releases during I/O — heartbeats run while `requests.post` blocks on the socket); or `asyncio.create_task` in async code |
+| **Node.js**    | `setInterval` on the event loop (works because Node I/O is non-blocking — but a CPU-bound user task will still block heartbeats; use a worker thread) |
+| **Rust / Tokio** | `tokio::spawn` of an `interval` task |
+
+Putting the heartbeat *between* work units in a synchronous loop is the classic anti-pattern: every long blocking call (DNS lookup, slow target API, big file write) that exceeds `lease_duration` fires the sweeper, even though the executor is alive.
+
+#### 10.6.7 Why the heartbeat is also a CAS (the zombie scenario)
+
+The heartbeat `UPDATE` includes `AND lease_owner = :me`. This handles the worst case in the design:
+
+1. Pod **A** claims at T=0, `lease_until=60`, `lease_owner=A`.
+2. A's process is paused (huge GC) from T=10 to T=80 — **no heartbeats**.
+3. At T≈61 the **sweeper** sees the expired lease, flips `status=SCHEDULED`.
+4. Watcher → Picker → Kafka → Pod **B** claims at T=70 with `lease_owner=B`.
+5. At T=80 Pod A wakes up and tries to heartbeat. Its `UPDATE` has `lease_owner=A` in the `WHERE` — **0 rows updated**. A knows it has been preempted and stops; it cancels its in-flight user code; its eventual terminal `UPDATE` will also fail the same CAS, so its work becomes a "zombie write" that never lands.
+
+Without the `lease_owner` check A would blindly extend the lease and **two pods would run the same job concurrently** (only the executor's `idempotency_key = job_id` on the *target* would save you — and that is a weaker guarantee than CAS).
+
+This is the same lease+heartbeat protocol §21 Q7 describes, formalised.
+
+#### 10.6.8 Why a lease can actually expire — the 7 categories
+
+A lease expires when the heartbeat `UPDATE` **fails to commit before `lease_until`** — which always reduces to one of these. Use this list to triage incidents and to size `lease_duration` vs `heartbeat_interval`.
+
+##### A. Executor process is **dead** (most common)
+
+Pod is gone, so heartbeats simply stop.
+
+| Cause | Concrete trigger |
+|---|---|
+| Pod eviction               | k8s evicts on memory pressure, node drain, `cordon`, taint update |
+| OOMKilled                  | container exceeds `memory.limit` — payload bigger than expected, leak in user code |
+| Spot / preemption          | AWS spot reclaim, GCE preemptible 30-s notice, Azure low-priority VM |
+| Node failure               | kernel panic, hardware fault, AZ outage, EC2 instance retirement |
+| Rolling deploy             | replica restarted without graceful shutdown / `terminationGracePeriodSeconds` too short to release the lease |
+| Crash bug                  | segfault, panic, uncaught exception in worker thread, JNI crash |
+| HPA scale-down             | autoscaler removed the pod mid-run; SIGTERM ignored by executor |
+| Sidecar killed             | service-mesh proxy (Envoy/Linkerd) dies; app dies via shared PID namespace |
+
+##### B. Executor is **alive but not making progress** (paused but not crashed)
+
+The process exists but cannot run code or the heartbeat thread.
+
+| Cause | Concrete trigger |
+|---|---|
+| JVM long GC                | full GC stop-the-world > heartbeat interval — heap mis-sized, G1 RegionFailure |
+| CPU throttling             | k8s `cpu.cfs_quota` exhausted — pod throttled to ~0% for hundreds of ms |
+| Noisy neighbor             | another container saturates CPU / memory bandwidth / IOPS |
+| Memory pressure → swap     | host swap on, heartbeat thread blocked on page-in |
+| Disk I/O stall             | EBS gp2 burst credits exhausted, NVMe queue full, log fsync stall |
+| VM live-migration          | cloud provider migrating the underlying VM — process frozen for seconds (clock also jumps) |
+| Container freeze           | `docker pause`, k8s checkpoint/restore, debugger attach |
+| Thread starvation          | heartbeat scheduler runnable on a thread pool whose threads are all blocked on user-code calls |
+
+##### C. Executor is running but **cannot reach Postgres** (network / DB plane)
+
+Heartbeat fires but the `UPDATE` never commits.
+
+| Cause | Concrete trigger |
+|---|---|
+| Postgres failover          | primary went down — heartbeat keeps hitting old endpoint until DNS / HAProxy / PgBouncer flips |
+| Connection pool exhausted  | heartbeats can't get a connection — long queries holding all conns, or pool size too small |
+| PgBouncer / RDS Proxy outage | the connection multiplexer blips |
+| Network partition          | AZ split, NAT gateway dead, transit gateway flap, VPC peering down |
+| DNS failure                | resolver TTL expired, kube-dns / CoreDNS pod restart, `ndots:5` lookup storm |
+| Security group / NACL change | accidental rule update blocks 5432 |
+| TLS cert expiry / rotation | client cert expired, server cert rotation didn't propagate |
+| Service-mesh outage        | Envoy listener crashed, control plane (Istiod) down, mTLS handshake failures |
+| Postgres slow              | autovacuum on huge table, lock contention, replica lag making writes wait |
+| Disk full / WAL full       | Postgres rejects writes |
+
+##### D. **Heartbeat sent but commit too late** (race against the clock)
+
+The `UPDATE` arrives, but `lease_until < now()` already by the time it lands.
+
+| Cause | Concrete trigger |
+|---|---|
+| Mis-tuned heartbeat interval | `heartbeat_interval > lease_duration / 3` — a single missed beat kills the lease |
+| Mis-tuned lease duration   | `lease_duration < p99 query latency` for the heartbeat write itself |
+| Slow heartbeat path        | heartbeat queued behind user code (e.g. behind a 10-s blocking HTTP call) |
+| Postgres write latency spike | CPU saturation, replication lag delaying `acks=quorum` |
+| App-level scheduler starvation | heartbeat is a `setInterval` / `ScheduledExecutorService` delayed by a slow tick |
+
+##### E. **Clock drift / time discontinuities**
+
+`lease_until` is wall-clock — anything that moves wall clock forward on the *Postgres side* or backward on the *executor side* expires leases that aren't actually dead.
+
+| Cause | Concrete trigger |
+|---|---|
+| NTP step jump              | NTP corrects a 5-s drift in one step → leases that *just* renewed are now "expired" |
+| VM clock drift             | hyperv/KVM clock drift on noisy hypervisor — common on ESXi without `tools.syncTime` |
+| Container clock skew       | container started long ago without re-syncing time |
+| Live-migration freeze      | VM resumed, wall clock jumped forward by the freeze duration |
+| Daylight-saving bug        | only an issue if anyone foolishly used local time — V2 design uses ms-since-epoch, so a no-op |
+
+##### F. User code is **legitimately stuck** (rare but real)
+
+The executor *thinks* it's running fine; the lease expires because the user payload genuinely hung.
+
+| Cause | Concrete trigger |
+|---|---|
+| Target API hung            | webhook stops responding without timeout — executor blocks forever in synchronous I/O |
+| No client-side timeout     | `socket.timeout` not set — TCP retransmits for 15 minutes |
+| Deadlock                   | user code deadlocked on a mutex or DB row lock |
+| Infinite loop / runaway recursion | bug in user payload |
+| DNS lookup hung            | resolver down, `ndots` storm |
+| Synchronous handler holding heartbeat thread | bad architecture — heartbeats should run in a *separate, dedicated, cgroup-isolated* thread |
+
+##### G. **Operator / config errors**
+
+| Cause | Concrete trigger |
+|---|---|
+| Heartbeat thread never started | bug — feature flag, config typo, init-order bug |
+| Wrong `lease_owner` written | another instance can preempt because the CAS condition is wrong |
+| Lease duration set too aggressively | someone set `lease_duration = 5 s` to "improve recovery time" — every minor pause now expires it |
+| Multiple processes sharing one job | bad CAS — two heartbeats overwrite each other; one expires |
+
+##### Observability: how to distinguish them in production
+
+The *Sweeper* does not need to distinguish — its contract is "lease expired = re-promote", and `idempotency_key = job_id` makes that safe. **Observability** is what tells *you* which class of failure is happening so you can tune the system.
+
+| Signal | Tells you |
+|---|---|
+| Pod `terminationReason` (`OOMKilled`, `Evicted`, `Preempted`)         | A — process death                  |
+| `jvm_gc_pause_seconds_p99` > `lease_duration`                         | B — GC pause                        |
+| `container_cpu_cfs_throttled_seconds_total` rising                    | B — CPU throttle                    |
+| `pg_heartbeat_latency_p99` rising                                     | C / D — DB plane                    |
+| Heartbeat-attempted-but-failed counter                                | C — network / DB error path         |
+| Heartbeat-attempted-but-late counter                                  | D — clock/scheduling race           |
+| `wall_clock_drift_seconds` (NTP exporter)                             | E — clock                           |
+| `job_runtime_p99_by_job_type`                                         | F — user code stuck on specific types |
+
+#### 10.6.9 Two practical takeaways
+
+1. **The lease can expire for 30+ distinct reasons, but the sweeper does not care which one.** It re-promotes; idempotency on the target keeps it safe. *That* is the whole point of the design — you do not enumerate failure modes, you enumerate **invariants** (Q11 in §21).
+2. **Most expirations in practice are A and B**: pod evictions, OOMKills, GC pauses, CPU throttle. Tune `lease_duration` to comfortably exceed your **p99 GC pause + p99 CPU-throttle window**, run the heartbeat in a **dedicated thread that never blocks on user code**, and most "phantom expiry" goes away.
+
+#### 10.6.10 Visual summary
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Executor pod                               │
+│                                                         │
+│   ┌──────────────┐         ┌──────────────────┐         │
+│   │ Worker       │         │ Heartbeat thread │         │
+│   │  thread      │         │   (every 10 s)   │         │
+│   │              │         │                  │         │
+│   │ runs the     │         │ UPDATE jobs      │         │
+│   │ user payload │         │ SET lease_until  │         │
+│   │              │         │   = now()+60s    │         │
+│   │  (1 s ─      │         │ WHERE id=?       │         │
+│   │   1 hour)    │         │   AND owner=me   │         │
+│   └──────┬───────┘         └────────┬─────────┘         │
+│          │                          │                   │
+│          │      same pod,           │                   │
+│          │      different threads   │                   │
+└──────────┼──────────────────────────┼───────────────────┘
+           │                          │
+           ▼                          ▼
+    Target service               Postgres (jobs row)
+    (the actual side             ─ lease_owner
+     effect of the job)          ─ lease_until
+```
+
+Two threads, one row, one `UPDATE` every 10 seconds, indefinitely. **That** is what "extending the lease" means.
 
 ---
 
@@ -887,10 +1317,12 @@ Neither is safe alone. **Transactional outbox** is the right pattern: in the sam
 
 A global 15-s threshold is wrong. Use a **lease + heartbeat**:
 - Executor claims the job with `lease_until = now + lease_duration` (say 60 s).
-- Executor heartbeats every 10 s, extending `lease_until`.
+- Executor heartbeats every 10 s, extending `lease_until`. The heartbeat runs on a **separate thread** so user code length is irrelevant.
 - "Stuck" = `lease_until < now`, not "running for > 15 s".
 
 Long-running jobs keep extending the lease; crashed executors lose it; the sweeper re-promotes only the truly dead ones. Even when the sweeper double-fires, the executor's `idempotency_key = job_id` keeps the target side safe.
+
+(See §10.6 for the full protocol — pseudocode, timelines for happy & crash paths, the 7 categories of why leases actually expire, and tuning guidance.)
 
 ### Round 3 — Cancellation correctness
 
@@ -1030,3 +1462,462 @@ That is the minimum delta from the whiteboard to a production-credible 10K/s sch
 - **[src/HLD/08-CommonProblems/03-HotKeysAndHotPartitions.md](../08-CommonProblems/03-HotKeysAndHotPartitions.md)** — thundering-herd jitter at submit time.
 - **[src/HLD/08-CommonProblems/17-WatermarksAndLateEvents.md](../08-CommonProblems/17-WatermarksAndLateEvents.md)** — event-time semantics (relevant if you add windowed billing on top).
 - **[src/HLD/Components/](../Components/)** — deep dives on Kafka / SQS / SNS / Redis / Cassandra that back this design.
+
+
+1. Functional Requirements
+
+Feature 1: Ability to schedule a job at specified times (immediate/future/cron expression)
+Feature 2: Monitor the status of jobs in real-time (pending, running, success, failed, cancelled)
+Feature 3: Support update/cancel scheduled jobs before execution
+Feature 4: Support job dependencies - DAG (Directed Acyclic Graph) execution order
+Feature 5: Retry mechanism with configurable retry count and backoff strategy
+Feature 6: Dead letter queue for permanently failed jobs
+Feature 7: Job prioritization and resource allocation (CPU, memory limits per job)
+2. Non-Functional Requirements
+
+Scale & Performance
+Job Volume — Millions of jobs per day, thousands of jobs per second
+Executors — 100s of executor instances for parallel job execution
+Latency — Jobs should execute within 2s of scheduled time (±2s tolerance)
+Reliability & Consistency
+CAP Theorem — Availability >> Consistency (Job should run at least once, eventual consistency acceptable)
+Execution Guarantee — At-least-once execution (jobs may retry on failure, idempotency required)
+Durability — Job state persisted, no jobs lost even on system failure
+Scheduling Requirements
+Cron Support — Standard cron expressions (0 0 * * * for daily at midnight)
+Time Zones — Support scheduling in different time zones
+Backfill — Ability to run missed jobs (if scheduler was down)
+3. Core Entities
+
+Entity 1: Job - Task definition with job_id, name, schedule (cron/timestamp), payload, dependencies
+Entity 2: Scheduler - Component that schedules jobs based on time/cron expressions
+Entity 3: Executor - Worker that executes jobs, pulls from queue and runs job logic
+Entity 4: JobRun - Execution instance with run_id, job_id, status, start_time, end_time, logs
+Entity 5: DAG (Directed Acyclic Graph) - Workflow with multiple dependent jobs
+4. API Designing
+
+Job Management
+POST /v1/api/jobs — Create/schedule a job {name, schedule: 'cron/timestamp', payload, retry: 3, dependencies: []}
+GET /v1/api/jobs/{jobId} — Get job details (schedule, status, last run time)
+GET /v1/api/jobs/{jobId}/status — Get current status of job execution
+PUT /v1/api/jobs/{jobId} — Update job schedule or payload
+POST /v1/api/jobs/{jobId}/cancel — Cancel a scheduled/running job
+POST /v1/api/jobs/{jobId}/runnow — Run job immediately (trigger ad-hoc execution)
+Monitoring
+GET /v1/api/jobs/runs — List all job runs with filters (status, date range)
+GET /v1/api/jobs/{jobId}/runs — Get execution history for specific job
+GET /v1/api/jobs/stats — Get statistics (total jobs, success rate, avg execution time)
+5. High Level Design
+
+Clients/Users → LB + API Gateway: Authentication, authorization, rate limiting, routing
+Job Service → Job DB (PostgreSQL): Stores job definitions (schedule, payload, dependencies, retry config)
+Job Executor → Job DB: Pulls jobs that need to be executed, updates status
+Scheduler (Watcher) → Redis + Kafka: Polls jobs scheduled for execution, publishes to Kafka topics
+Kafka Topics: run (immediate execution), retry (failed jobs with retry), dead (permanently failed)
+Job Consumer Service → Executor Pool: Consumes from Kafka, dispatches to available executors
+Executor Services (100s instances): Execute job logic, update status in DB, publish results to Kafka
+Redis: Stores last-polled-time for scheduler, distributed locks for executors
+6. Deep Dive Design (Low Level)
+
+Step 1: Job Creation & Scheduling
+User sends: POST /v1/api/jobs with {name: 'ETL Pipeline', schedule_type: 'cron', schedule_value: '0 0 * * *', payload: {db_connection}, retry_count: 3, timeout: 3600}
+Job Service validates: Cron expression valid, schedule_time in future if one-time, dependencies don't create cycles (DAG validation)
+Service creates: Job record in PostgreSQL {job_id: UUID, name, schedule_type: 'cron', schedule_value, status: 'scheduled', next_run_time: '2025-01-21T00:00:00Z', created_at}
+Service calculates: next_run_time using cron parser library (croniter in Python), stores in indexed column for efficient polling
+Service returns: {job_id, status: 'scheduled', next_run_time}
+Step 2: Scheduler (Watcher) Polling
+Watcher service runs: Infinite loop with 20-second interval (configurable)
+Service queries: SELECT * FROM jobs WHERE status IN ('scheduled', 'running') AND next_run_time <= NOW() AND last_polled_time < (NOW - 30s) LIMIT 1000
+Service fetches: 1000 jobs ready for execution, updates last_polled_time = NOW() to prevent duplicate processing by other watchers
+For each job: Calculate if should run based on schedule_type - for cron, check if current time matches expression, for one-time check if next_run_time passed
+Service publishes: Job to Kafka topic 'run' with {job_id, run_id: UUID, payload, timestamp, attempt: 1}
+Step 3: Job Consumption & Execution
+Job Consumer Service: Consumes from Kafka topics 'run', 'retry' with consumer group 'job-consumers', partitioned by job_id for ordering
+Consumer receives: Job message {job_id, run_id, payload, attempt: 1}
+Consumer creates: JobRun record in DB {run_id, job_id, status: 'pending', scheduled_at, created_at}
+Consumer checks: Available executor capacity from Redis executors:available (tracks active jobs per executor), implements load balancing
+Consumer dispatches: Job to Executor Service via internal API POST /executor/run with {run_id, job_id, payload}, updates status to 'running'
+Executor updates: DB with status='running', start_time=NOW(), publishes heartbeat every 10s to Redis executor:{executor_id}:heartbeat
+Step 4: Job Execution by Executor
+Executor receives: Job details {run_id, job_id, payload}
+Executor fetches: Full job definition from Job DB (or Redis cache with TTL=5 min) to get retry_count, timeout, dependencies
+Executor runs: Job logic in isolated process/container (Docker container or separate thread with resource limits)
+Job execution: Runs user-defined code (Python script, shell command, HTTP request to external service), streams logs to centralized logging (CloudWatch, ELK)
+Timeout handling: If execution exceeds timeout (3600s), kill process, mark as 'timeout' status
+Executor updates: DB with status='success' or 'failed', end_time, error_msg (if failed), execution_time_ms
+Step 5: Retry Mechanism
+On job failure: Executor checks job.retry_count > current_attempt (e.g., retry_count=3, attempt=1)
+Executor publishes: To Kafka 'retry' topic with {job_id, run_id, payload, attempt: 2, retry_delay: 60s (exponential backoff)}
+Delay calculation: retry_delay = base_delay * (2 ^ attempt) + jitter, e.g., 60s, 120s, 240s for attempts 1, 2, 3
+Retry Consumer: Consumes from 'retry' topic, sleeps for retry_delay duration, then republishes to 'run' topic for re-execution
+Final failure: If attempt > retry_count (e.g., attempt=4, retry_count=3), publish to 'dead' topic, update job status='failed_permanently', send alert
+Step 6: DAG Dependency Resolution
+Job definition: Job B depends on Job A completion - stored as jobs.dependencies = [job_a_id]
+Scheduler checks: Before scheduling Job B, query JobRuns table WHERE job_id IN (dependencies) AND status='success' AND run_date = TODAY
+Conditional execution: If all dependencies met, publish Job B to Kafka 'run', else skip and wait for next watcher cycle
+Parallel execution: Jobs C and D both depend on B - once B succeeds, both C and D published simultaneously for parallel execution
+Cycle detection: On job creation, run DFS (Depth-First Search) on dependency graph, reject job if cycle detected (e.g., A→B→C→A)
+Step 7: Job Cancellation
+User sends: POST /v1/api/jobs/{job_id}/cancel
+Job Service checks: Current status - if 'scheduled' (not running), update status='cancelled' in DB, remove from next scheduling cycle
+If status='running': Publish cancellation event to Kafka 'cancel' topic with {job_id, run_id}
+Executor receives: Cancellation event via subscription to 'cancel' topic, sends SIGTERM to job process
+Graceful shutdown: Process has 30s to cleanup (close DB connections, save state), then SIGKILL if not exited
+Executor updates: DB with status='cancelled', end_time=NOW(), publishes completion event
+Step 8: Monitoring & Health Checks
+Watcher service monitors: Executor heartbeats in Redis, if executor:{id}:heartbeat not updated in 60s, mark executor as 'unhealthy'
+Service identifies: Jobs running on unhealthy executor (query JobRuns WHERE executor_id={id} AND status='running')
+Service reschedules: Those jobs by publishing to Kafka 'run' topic with note 'rescheduled_from_dead_executor', updates old run status='executor_died'
+Dashboard metrics: Total jobs scheduled, running, success, failed (last 24h), avg execution time, success rate %, executors online/offline
+Alerts: Triggered on: job failure rate >10%, executor capacity >80%, dead letter queue size >100 jobs
+Step 9: Distributed Locking (Prevent Duplicate Execution)
+Problem: Multiple watcher instances poll jobs, could schedule same job twice
+Solution: Redis distributed lock using SETNX - before scheduling job, acquire lock: SET lock:job:{job_id}:schedule {watcher_id} NX EX 60
+Lock acquired: Watcher schedules job (publishes to Kafka), releases lock DELETE lock:job:{job_id}:schedule
+Lock failed: Another watcher already processing this job, skip to next job in query result
+Auto-expiry: Lock expires in 60s if watcher crashes, prevents deadlock, next watcher cycle picks up job
+Step 10: Handling Missed Jobs (Backfill)
+Scenario: Scheduler down for 2 hours, 100 hourly jobs missed
+Backfill detection: On watcher restart, query jobs WHERE next_run_time < (NOW - 2 * schedule_interval) AND status='scheduled'
+Backfill strategy: For each missed job, create JobRun with scheduled_at = missed_time, status='backfill', publish to Kafka
+Throttling: Publish backfill jobs at controlled rate (100 jobs/sec) to prevent overwhelming executors
+User notification: Send alert 'Scheduler was down, running 100 missed jobs' for transparency
+7. Client-Side Components (UI/CLI)
+
+Component 1: Job Definition UI - Form to create jobs with cron expression builder, payload editor
+Component 2: DAG Visualizer - Graph view showing job dependencies with nodes and edges
+Component 3: Job Monitor Dashboard - Real-time status board with job counts (running, success, failed)
+Component 4: Execution History - Timeline view of past job runs with logs and error details
+Component 5: Cron Expression Helper - Interactive cron builder with natural language (every day at 2 AM)
+Component 6: Alert Configuration - UI to set alerts on job failures, SLA breaches
+Component 7: CLI Tool - Command-line interface for power users (airflow trigger dag_id, airflow list_jobs)
+8. Database Schema Details
+
+Jobs (PostgreSQL - master job definitions)
+job_id — uuid PRIMARY KEY
+name — varchar(255) UNIQUE
+schedule_type — enum (cron, one_time, interval)
+schedule_value — varchar(255) (cron expression or ISO timestamp)
+next_run_time — timestamp INDEXED (for efficient polling)
+last_polled_time — timestamp (prevents duplicate scheduling)
+status — enum (scheduled, running, paused, cancelled)
+payload — jsonb (job-specific parameters)
+dependencies — uuid[] (array of job_ids this job depends on)
+retry_count — integer DEFAULT 3
+timeout — integer (seconds, e.g., 3600)
+priority — integer (1-10, higher = more important)
+owner_id — uuid FK → Users
+created_at — timestamp
+updated_at — timestamp
+JobRuns (PostgreSQL - execution history)
+run_id — uuid PRIMARY KEY
+job_id — uuid FK → Jobs, INDEXED
+status — enum (pending, running, success, failed, timeout, cancelled, executor_died)
+scheduled_at — timestamp (when job was supposed to run)
+start_time — timestamp (actual start time)
+end_time — timestamp (completion time)
+execution_time_ms — bigint (duration in milliseconds)
+executor_id — varchar(100) (which executor ran this job)
+attempt — integer (1, 2, 3 for retries)
+error_msg — text (error details if failed)
+logs_url — varchar(500) (S3 path or CloudWatch link)
+created_at — timestamp INDEXED (for history queries)
+Redis - Distributed State
+lock:job:{job_id}:schedule — STRING {watcher_id} with NX EX 60 (distributed lock)
+executor:{executor_id}:heartbeat — STRING {timestamp} updated every 10s (health check)
+executors:available — HASH {executor_id: active_job_count} (load balancing)
+job:{job_id}:cache — HASH (cached job definition, TTL: 5 min)
+last_poll_time — STRING timestamp of last successful watcher poll
+Kafka Topics
+run — Jobs ready for immediate execution (10 partitions by job_id)
+retry — Failed jobs with remaining retry attempts (5 partitions)
+dead — Permanently failed jobs after all retries (1 partition, low volume)
+cancel — Cancellation requests for running jobs (3 partitions)
+completed — Job completion events for downstream systems (10 partitions)
+9. Alternative Scheduling Solutions
+
+Approach 1: Event-Driven (Amazon EventBridge)
+Concept: Jobs triggered by events instead of time-based polling
+Implementation: EventBridge rules match cron expressions, trigger Lambda functions or SQS queues
+Pros: Serverless, auto-scaling, no polling overhead, pay-per-execution
+Cons: Vendor lock-in (AWS), limited to 300 targets per rule, cold start latency
+Use case: Simple scheduled tasks, cloud-native architectures
+Approach 2: Managed Service (AWS Step Functions, Temporal)
+Concept: Workflow orchestration as a service with built-in retry, state management
+Implementation: Define workflows as JSON (Step Functions) or code (Temporal), service handles execution
+Pros: No infrastructure management, built-in monitoring, durable execution (survives crashes)
+Cons: Cost (per state transition), learning curve, less control over execution
+Use case: Complex workflows with multiple steps, enterprise applications
+Approach 3: Custom with Delay Queue (RabbitMQ, SQS)
+Concept: Use message queue's delay feature to schedule jobs
+Implementation: Publish message with delay = (scheduled_time - now), consumer picks up when delay expires
+Pros: Simple, leverages existing message queue, supports priorities
+Cons: Limited to max delay (SQS: 15 min, need rescheduling), no cron support, poor for recurring jobs
+Use case: One-time delayed jobs, reminder systems
+10. Scaling & Optimization
+
+Technique 1: Horizontal Executor Scaling - Add more executor instances, Kafka partitioning ensures parallel processing
+Technique 2: Database Indexing - Index on (next_run_time, status, last_polled_time) for fast watcher queries
+Technique 3: Job Caching - Cache job definitions in Redis (TTL: 5 min), reduces DB reads by 90%
+Technique 4: Kafka Partitioning - Partition 'run' topic by job_id ensures ordering, prevents race conditions
+Technique 5: Read Replicas - Route job history queries to PostgreSQL read replicas, writes to primary only
+Technique 6: Watcher Sharding - Multiple watcher instances with different polling intervals (watcher-1: every 20s, watcher-2: every 60s for low-priority jobs)
+Technique 7: Priority Queues - Separate Kafka topics for high/low priority jobs, high-priority consumers have more instances
+Technique 8: Batch Processing - Watcher fetches 1000 jobs per query instead of 1, publishes in batch to Kafka
+Technique 9: Circuit Breaker - If external job dependency (API) fails >5 times, pause job for 10 min, prevent spam
+Technique 10: Execution Pooling - Executors maintain pool of worker threads/processes, reuse for multiple jobs (avoid cold start)
+Technique 11: Log Aggregation - Stream job logs to S3/CloudWatch async, don't block job execution on log writes
+Technique 12: Dead Letter Queue Monitoring - Alert when dead topic has >100 messages, indicates systemic issue
+11. Common Interview Questions
+
+Q
+How do you prevent the same job from being scheduled twice by multiple watcher instances?
+A
+Distributed locking with Redis:
+
+(1) Lock acquisition - before scheduling job, watcher attempts SET lock:job:{job_id}:schedule {watcher_id} NX EX 60 (set if not exists, 60s expiry),
+
+(2) Lock success - if returns 1, watcher proceeds to publish job to Kafka, updates last_polled_time in DB, releases lock,
+
+(3) Lock failure - if returns 0, another watcher already processing this job, skip to next job,
+
+(4) Database-level protection - UPDATE jobs SET last_polled_time = NOW() WHERE job_id = {id} AND last_polled_time < (NOW - 30s), only updates if not recently polled,
+
+(5) Auto-expiry - lock expires in 60s if watcher crashes, prevents deadlock. Alternative: Use Kafka as single-source scheduling - only 1 watcher publishes to Kafka (leader election via Zookeeper), consumers handle rest. Trade-off: Redis lock is faster, simpler vs Kafka leader election is more robust for multi-datacenter. Example: Job J1 next_run_time=10:00 AM → Watcher-1 and Watcher-2 poll at same time → Watcher-1 acquires lock → publishes J1 to Kafka → releases lock → Watcher-2's lock fails → skips J1.
+
+Q
+How do you handle jobs that are scheduled while the scheduler is down?
+A
+Backfill mechanism:
+
+(1) Detection - on watcher restart, query jobs WHERE next_run_time < NOW() AND status IN ('scheduled', 'running'), identifies missed jobs,
+
+(2) Categorization - jobs with next_run_time in last 2 hours = recent misses (high priority), >2 hours = stale (may skip or backfill based on policy),
+
+(3) Backfill execution - for each missed job, create JobRun with scheduled_at = original_next_run_time, status='backfill', publish to Kafka 'run' topic,
+
+(4) Rate limiting - publish backfill jobs at 100 jobs/sec to prevent overwhelming executors (if 1000 missed jobs, takes 10s to queue all),
+
+(5) SLA check - if job has SLA (must run within 1 hour of schedule), skip if SLA breached, mark as 'missed_sla', alert user,
+
+(6) Recurring jobs - for cron jobs, calculate all missed runs: if daily job down for 3 days, create 3 JobRuns for Day 1, 2, 3, or skip to most recent (configurable). Example: Scheduler down from 10:00-12:00, Job A scheduled hourly (10:00, 11:00, 12:00) → on restart at 12:05, detect 2 missed runs → backfill creates runs for 10:00, 11:00 → publish both to Kafka → executors process → update next_run_time to 13:00.
+
+Q
+How do you implement retry mechanism with exponential backoff?
+A
+Multi-stage retry pipeline:
+
+(1) Initial failure - executor catches exception, checks job.retry_count (e.g., 3) vs current attempt
+
+(1), if retries remaining, proceed,
+
+(2) Delay calculation - retry_delay = base_delay * (2 ^ (attempt - 1)) + random(0, base_delay/2), example: attempt 1 → 60s, attempt 2 → 120s + jitter (0-30s), attempt 3 → 240s + jitter,
+
+(3) Publish to retry topic - executor publishes to Kafka 'retry' with {job_id, run_id, payload, attempt: 2, scheduled_retry_at: NOW() + retry_delay},
+
+(4) Retry consumer - dedicated consumer group reads 'retry' topic, for each message: calculate wait_time = scheduled_retry_at - NOW(), if wait_time > 0: sleep(wait_time), then republish to 'run' topic,
+
+(5) Final failure - if attempt > retry_count, publish to 'dead' topic, update DB status='failed_permanently', send alert via SNS/email,
+
+(6) Jitter rationale - prevents thundering herd (100 jobs fail at same time, all retry at exact same moment without jitter). Alternative: Use Kafka delayed message feature (Kafka 3.0+) or SQS delay queue for retry scheduling. Example: Job fails at 10:00 → retry_count=3 → attempt 1 fails → retry at 10:01 (60s) → attempt 2 fails → retry at 10:03 (120s) → attempt 3 fails → retry at 10:07 (240s) → attempt 4 (exceeds retry_count) → dead letter queue.
+
+Q
+How do you handle job dependencies in a DAG (Directed Acyclic Graph)?
+A
+Dependency resolution with topological ordering:
+
+(1) Storage - Job table has dependencies column: job_b.dependencies = [job_a_id, job_c_id] means B depends on A and C,
+
+(2) Cycle detection - on job creation/update, run DFS (Depth-First Search) starting from new job, if visit same node twice, cycle exists, reject with 'Circular dependency detected: A→B→C→A',
+
+(3) Scheduling check - watcher before scheduling Job B, queries: SELECT COUNT(*) FROM job_runs WHERE job_id IN (job_a_id, job_c_id) AND status='success' AND DATE(scheduled_at) = TODAY, if count != 2 (missing dependencies), skip Job B this cycle,
+
+(4) Trigger on completion - when Job A completes successfully, publish 'job.completed' event to Kafka with {job_id: A, run_date},
+
+(5) Dependency watcher - separate service consumes 'job.completed', queries jobs WHERE dependencies CONTAINS job_a_id, checks if all dependencies now met, if yes, publishes dependent jobs to 'run' topic,
+
+(6) Parallel execution - jobs at same level (C and D both depend only on B) published simultaneously for parallel execution. Alternative: Airflow's approach - precompute DAG at deployment, store as graph in memory, traverse on each run. Example: DAG: A → B → C, D (B depends on A, C and D depend on B) → A runs at 10:00, succeeds → B scheduled for 10:05, succeeds → C and D both scheduled for 10:10 in parallel.
+
+Q
+What happens if an executor crashes while running a job?
+A
+Executor failure detection and recovery:
+
+(1) Heartbeat monitoring - executors publish heartbeat to Redis executor:{id}:heartbeat every 10s with timestamp,
+
+(2) Watcher health check - separate health check service polls Redis every 30s, checks if any executor's heartbeat > 60s old (3 missed heartbeats), marks as 'unhealthy',
+
+(3) Job identification - query JobRuns WHERE executor_id = {unhealthy_id} AND status='running', finds orphaned jobs,
+
+(4) Rescheduling - for each orphaned job: update status='executor_died', create new JobRun with attempt = old_attempt + 1 (counts as retry), publish to Kafka 'run' topic,
+
+(5) Cleanup - remove executor:{id} from Redis executors:available pool, alert ops team,
+
+(6) Idempotency requirement - jobs must be idempotent (safe to run multiple times) because crashed job may have partially completed before executor died. Example: Executor E1 running Job J1 (writing to database) → E1 crashes at 50% completion → heartbeat stops → health check detects after 60s → Job J1 rescheduled to Executor E2 → E2 re-runs full job → job's code must handle 'partial completion' scenario (check if data already written, skip or upsert). Prevention: Use distributed locks for critical sections (job locks specific resource before modifying).
+
+Q
+How do you implement priority-based job scheduling?
+A
+Multi-tier priority queue system:
+
+(1) Priority definition - jobs have priority field (1-10, 10=highest), stored in Job table,
+
+(2) Topic separation - Kafka topics: high_priority_run (priority 8-10), medium_priority_run (5-7), low_priority_run (1-4),
+
+(3) Watcher routing - when scheduling job, publish to appropriate topic based on job.priority,
+
+(4) Consumer allocation - high priority topic has 50 consumer instances, medium has 30, low has 20 (2.5x more resources for high priority),
+
+(5) Within-topic ordering - jobs in same priority topic processed FIFO (First In First Out) using Kafka partitioning,
+
+(6) Starvation prevention - if low priority jobs waiting >1 hour, temporarily boost to medium priority (aging algorithm). Alternative: Single topic with priority header, consumers poll high-priority partitions more frequently. Example: Job A (priority 9) and Job B (priority 3) scheduled at same time → A published to high_priority_run, B to low_priority_run → high topic has 50 consumers, low has 20 → A assigned to executor in <1s, B waits 5s for executor. Trade-off: More topics = more complexity but better isolation, single topic = simpler but consumers need priority-aware logic.
+
+Q
+How do you handle time zone conversions for scheduled jobs?
+A
+Server-side time zone normalization:
+
+(1) Storage - all timestamps in DB stored as UTC (jobs.next_run_time = '2025-01-21T00:00:00Z'),
+
+(2) User input - job creation accepts schedule with time zone: {schedule: '0 0 * * *', timezone: 'America/New_York'},
+
+(3) Conversion on save - backend converts to UTC using timezone library (pytz in Python): cron '0 0 * * *' in EST (UTC-5) → UTC '0 5 * * *', stores UTC version,
+
+(4) Display - when user views job, convert back to their timezone for display: '2025-01-21T00:00:00Z' UTC → '2025-01-20T19:00:00' EST,
+
+(5) DST handling - recalculate next_run_time when daylight saving time changes (March/November), e.g., job '9 AM EST' shifts 1 hour in UTC,
+
+(6) Watcher logic - always works in UTC, no timezone awareness needed for scheduling. Complexity: Recurring jobs across DST boundary - job scheduled for '2 AM EST daily' on DST start day (2 AM doesn't exist), skip to 3 AM or run at 1 AM (configurable). Example: User in India (IST, UTC+5:30) schedules job for daily at midnight local time → backend stores as UTC 18:30 previous day → watcher at 18:30 UTC triggers job → user sees '00:00 IST' in UI. Alternative: Store timezone with each job, watcher converts on-the-fly (more flexible but complex).
+
+Q
+How do you implement job cancellation for already running jobs?
+A
+Graceful cancellation protocol:
+
+(1) User request - POST /jobs/{job_id}/cancel, service checks status, if 'running', publish to Kafka 'cancel' topic with {job_id, run_id},
+
+(2) Executor subscription - all executors subscribe to 'cancel' topic with consumer group per executor (ensures all get message),
+
+(3) Executor matching - executor checks if run_id matches currently running job, if yes, initiates cancellation,
+
+(4) Signal sending - executor sends SIGTERM (signal 15) to job process, allows graceful shutdown (close connections, save state),
+
+(5) Timeout - if process doesn't exit in 30s, send SIGKILL (signal 9) to force terminate,
+
+(6) Status update - executor updates DB status='cancelled', end_time=NOW(), publishes 'job.cancelled' event,
+
+(7) Cleanup - release any distributed locks held by job, rollback transactions if applicable. Edge case: Job already completed before cancellation received → executor ignores cancel message, DB status remains 'success'. Alternative: Use shared memory flag (Redis cancel:{run_id} = true), job periodically checks flag and exits if set (requires job code cooperation). Example: Long-running ETL job (2 hours) → user cancels after 30 min → cancel event published → executor sends SIGTERM → job's cleanup handler runs (commits partial data) → exits gracefully → status='cancelled', user can retry or analyze partial results.
+
+Q
+How do you prevent job duplication on executor restart?
+A
+Idempotent job execution with state tracking:
+
+(1) Job uniqueness - each JobRun has unique run_id, executor stores currently_running_job = run_id in Redis on start,
+
+(2) Restart detection - on executor restart, check Redis for currently_running_job, if exists, it was killed mid-execution,
+
+(3) Status reconciliation - query DB for run_id status, if still 'running', mark as 'executor_died' (executor crashed), don't re-execute (prevents duplication),
+
+(4) Kafka offset management - executor commits Kafka offset AFTER job completes, on restart, uncommitted messages re-delivered (at-least-once),
+
+(5) Idempotency enforcement - job_id + scheduled_at combination ensures uniqueness, if executor tries to start job with same (job_id, scheduled_at), DB unique constraint fails, skip execution,
+
+(6) Exactly-once attempt - use Kafka transactions (Kafka 0.11+) with transactional.id per executor, ensures message processed and offset committed atomically. Trade-off: At-least-once (simpler, requires idempotent jobs) vs exactly-once (complex, guarantees no duplication but slower). Example: Executor E1 running Job J1 (run_id=R1) → E1 crashes → E1 restarts → checks Redis, finds currently_running_job=R1 → queries DB, R1 status='running' → updates R1 to 'executor_died', doesn't re-run → health check reschedules R1 with new run_id=R2 → counted as retry.
+
+Q
+What's your strategy for monitoring and alerting on job failures?
+A
+Multi-level monitoring and alerting:
+
+(1) Metrics collection - executors publish metrics to Prometheus/CloudWatch: job_success_count, job_failure_count, job_duration_ms, jobs_in_queue (by priority),
+
+(2) Failure thresholds - alert rules: single job failure rate >50% (6 of last 10 runs failed) = critical alert, overall system failure rate >10% in 1 hour = warning,
+
+(3) SLA monitoring - if job has SLA (must complete within 2 hours of schedule), alert if end_time - scheduled_at > 2 hours,
+
+(4) Dead letter queue size - alert if dead topic has >100 messages (indicates systemic issue, not isolated failures),
+
+(5) Executor health - alert if <30% executors healthy (capacity issue),
+
+(6) Dashboard - Grafana dashboard showing: jobs by status (pie chart), execution time trends (line graph), failure reasons (top 10 errors). Alert channels:
+
+(7) PagerDuty for critical (job X failed 5 times),
+
+(8) Slack for warnings (10% system failure rate),
+
+(9) Email daily digest of all failures. Example: ETL job fails 3 times in row → alert 'Job ETL_Pipeline failing (3/3 attempts), error: DB connection timeout' sent to Slack → on-call engineer investigates, finds DB overloaded → scales DB → job succeeds on retry 4.
+
+12. Key Numbers to Remember
+
+Scale & Throughput
+Job Volume — Millions of jobs per day, 1000s of jobs per second at peak
+Executors — 100-1000 executor instances for parallel execution
+Watcher Polling — Every 20 seconds, fetches up to 1000 jobs per poll
+Kafka Throughput — 10K messages/sec across all topics (run, retry, dead)
+Latency & Timing
+Scheduling Latency — ±2 seconds from scheduled time (watcher interval + Kafka latency)
+Executor Heartbeat — Every 10 seconds to Redis for health monitoring
+Health Check Interval — Every 30 seconds, marks executor dead after 60s no heartbeat
+Lock Expiry — 60 seconds for distributed locks (prevents deadlock)
+Retry & Recovery
+Default Retry Count — 3 retries (4 total attempts)
+Exponential Backoff — 60s, 120s, 240s for attempts 1, 2, 3 with jitter
+Job Timeout — Default 3600s (1 hour), configurable per job
+Cancellation Timeout — 30s for SIGTERM, then SIGKILL
+Database & Caching
+Watcher Query Limit — 1000 jobs per query (batch processing)
+Job Cache TTL — 5 minutes in Redis for job definitions
+Index Fields — next_run_time, status, last_polled_time for fast queries
+Kafka Retention — 7 days for replay capability
+Priority Scheduling
+Priority Levels — 1-10 scale (10=highest, 1=lowest)
+Consumer Allocation — High: 50 instances, Medium: 30, Low: 20
+Starvation Prevention — Boost priority if waiting >1 hour
+Monitoring Thresholds
+Failure Rate Alert — Single job >50% failure rate (6/10 runs)
+System Failure Alert — Overall >10% failure rate in 1 hour
+Dead Queue Alert — >100 messages in dead letter queue
+Executor Capacity Alert — <30% healthy executors remaining
+Example Calculation - Job Scheduling
+Watcher Poll — 20s interval, fetches 1000 jobs
+Lock Acquisition — 10ms per job (Redis SETNX)
+Kafka Publish — 50ms for batch of 1000 jobs
+Consumer Processing — 100ms from Kafka to executor assignment
+Total Latency — 20s (polling) + 0.16s (processing) = ~20s from schedule time
+Resource Allocation
+Executor Pool Size — 100 executors × 10 threads/executor = 1000 concurrent jobs
+Memory per Job — 512MB default, configurable up to 4GB
+CPU per Job — 0.5 vCPU default, configurable up to 4 vCPU
+Backfill Rate — 100 jobs/sec to prevent overload
+Key Interview Tips
+
+⚠️
+NEVER assume jobs are idempotent. Always design for at-least-once execution. Executors may crash mid-job, jobs may be rescheduled, retries happen. Jobs MUST handle duplicate execution safely (check state, upsert not insert).
+
+⭐
+Interviewers ALWAYS ask: 'How to prevent duplicate scheduling?'. Answer: (1) Redis distributed lock (SETNX) before publishing to Kafka, (2) Database last_polled_time update with WHERE clause, (3) Kafka exactly-once semantics with transactional.id. Show understanding of multiple layers.
+
+💡
+Key optimization: Batch watcher queries. Fetching 1 job per query = 1000 queries/min overhead. Fetching 1000 jobs per query = 1 query/min, 1000x reduction in DB load. Pagination + batch Kafka publishing critical for scale.
+
+⭐
+Must mention: Exponential backoff with jitter. Without jitter, 100 jobs failing at same time all retry at exact same moment → thundering herd → system overload. Jitter (random 0-30s) spreads retries over time.
+
+⚠️
+NEVER use polling interval <10 seconds for watcher. 5s interval = 12 polls/min = 12 DB queries/min + 12 lock acquisitions. Minimal latency improvement but 2x overhead. 20s interval is sweet spot for most use cases.
+
+💡
+DAG cycle detection is critical. Allow A→B→C→A dependency creates infinite loop, system hangs. Run DFS on dependency graph during job creation, reject if cycle found. Also limit dependency depth (e.g., max 10 levels).
+
+⭐
+Interviewers love asking: 'What if executor crashes during job execution?'. Answer: (1) Heartbeat monitoring detects dead executor, (2) Orphaned jobs rescheduled as retries, (3) Jobs must be idempotent. Show understanding of failure recovery.
+
+⚠️
+NEVER store job logs in database. 100K jobs/day × 10KB logs = 1GB/day, 365GB/year in DB (expensive, slow queries). Stream logs to S3/CloudWatch, store only URL in DB. DB for metadata, object storage for logs.
+
+💡
+Priority queue via separate Kafka topics is simpler than single-topic priority. 3 topics (high/med/low) with different consumer counts gives natural prioritization. Single topic requires custom consumer logic to peek at priority header.
+
+⭐
+Must explain: At-least-once vs exactly-once execution. At-least-once is simpler (Kafka default), requires idempotent jobs. Exactly-once needs Kafka transactions (complex, performance hit). For job scheduling, at-least-once + idempotency is standard.

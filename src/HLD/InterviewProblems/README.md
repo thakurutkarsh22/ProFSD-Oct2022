@@ -223,6 +223,7 @@ A practical categorisation of system-design interview problems. Every real probl
 |---------|-----------|------|
 | Payment System (Stripe) | Hard | [06-DesignHard/03-PaymentSystem.md](../06-DesignHard/03-PaymentSystem.md) |
 | Stock Exchange / Matching Engine | Hard | [06-DesignHard/06-StockExchange.md](../06-DesignHard/06-StockExchange.md) |
+| **Stock Broking Platform (Zerodha / Robinhood)** | Hard | [04-StockBrokingPlatform.md](./04-StockBrokingPlatform.md) |
 | Digital Wallet (PayPal / Paytm) | Hard | _TODO_ |
 | Ledger / accounting system | Hard | _TODO_ |
 | Cryptocurrency exchange | Hard | _TODO_ |

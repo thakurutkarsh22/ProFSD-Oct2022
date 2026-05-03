@@ -375,6 +375,564 @@ flowchart LR
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 8.3 V2 Diagram — Step-by-Step Walkthrough
+
+> Editable source: [`assets/03-job-scheduler-utkarsh-design-v2.drawio`](./assets/03-job-scheduler-utkarsh-design-v2.drawio).
+>
+> This section walks the V2 diagram **box by box, edge by edge**, in the exact order you'd narrate it on a whiteboard. Each component is annotated with its drawio cell id (e.g. `[37]`) so you can locate it on the canvas. Every flow is a numbered sequence of steps; every step ends in a real component on the diagram. If something on the diagram is *not* covered here, it's either a panel of prose (Latency budget, Invariants, Alternatives) or an annotation Q&A bubble.
+
+#### 8.3.1 Component roster (every box on the canvas)
+
+##### Edge plane (north of the diagram)
+
+| Cell | Component | Role in V2 |
+|------|-----------|------------|
+| `[10]` | **clients / users**            | mobile · web · service-to-service callers |
+| `[11]` | **LB + API Gateway** *(N pods)* | terminates TLS, authN/authZ, **per-tenant rate-limit + idempotency-key dedupe**, routes write APIs to Job Svc, read APIs to Job Search Svc |
+| `[12]` | **Job Svc** *(cluster)*         | submit / edit / cancel single jobs — **the only writer to `jobs` and `outbox` for user-facing operations** |
+| `[13]` | **Job Search Svc** *(cluster)*  | reads (`GET /jobs/{id}`, `GET /jobs/{id}/status`) — hits Postgres replicas + Redis cache; never writes |
+| `[27]` | **Status Consumer** *(cluster)* | tails Kafka `jobs.status` → UPSERTs Postgres + warms Redis status cache |
+| `[28]` | **Cron Emitter** *(cluster, NEW)* | on each cron success, **eagerly INSERTS the next occurrence row in the same txn that marks SUCCEEDED** so cron never has a "missing next" gap (Q10) |
+
+##### Control plane
+
+| Cell | Component | Role |
+|------|-----------|------|
+| `[33]` | **etcd** *(NEW)*                 | shard-owner leases (TTL = 3 s, hb = 1 s); leases handed to **Watcher**, **Picker**, **Outbox Publisher**, **Cron Emitter**, **Sweeper** |
+| `[34]` | **Redis `last_polled_time:{shard}`** | per-shard cursor so a Watcher resuming after restart picks up where it left off |
+
+##### Durable store (Postgres)
+
+| Cell | Component | Role |
+|------|-----------|------|
+| `[14]` | **Postgres** *(primary + replicas)* | source of truth — sharded by `hash(job_id) % 256`, partitioned by `fire_minute`, RF = 3 sync; quorum writes |
+| `[15]` | `jobs` table     | full canonical row (§7.1) — **now also includes `lease_owner` + `lease_until_ms`** with a partial index on `(shard, lease_until) WHERE status='RUNNING'` for the Sweeper |
+| `[16]` | `outbox` table *(NEW)* | one row per Kafka event Job Svc wants to publish; written **in the same txn** as the `jobs` UPDATE; drained by Outbox Publisher |
+| `[17]` | `job_runs` table       | append-only audit log: `(job_id, attempt, status, executor_id, start, end, error)` |
+
+##### Hot tier (Redis cluster)
+
+| Cell | Component | Role |
+|------|-----------|------|
+| `[36]` | **Redis ZSET `due:{shard}`** *(NEW)* | hot firing index — `score = fire_at_ms`, `member = job_id`, **5-min horizon**, ~3M entries/shard at peak |
+| `[41]` | **Redis cancel-flag** `cancel:job:{id}` | TTL = until `fire_at + slack`; Executor polls before each unit of work — fast cooperative cancel channel |
+
+##### Dispatch fleet (the hot path)
+
+| Cell | Component | Role |
+|------|-----------|------|
+| `[35]` | **Watcher / Pre-Loader** *(cluster)* | per-owned-shard, **every 1 min**, scans `jobs WHERE fire_at_ms < now+5min AND status='SCHEDULED'`, **`ZADD due:{shard} … NX`** — canonical promoter |
+| `[37]` | **Picker** *(cluster, NEW)*     | per-owned-shard, **tick = 100 ms**, runs Lua `ZRANGEBYSCORE 0 now()` + `ZREM` atomically, produces to Kafka with `key = job_id` |
+| `[38]` | **Kafka — dispatch**            | three topics: `jobs.run` (hot path), `jobs.retry` (delayed retries), `jobs.dead` (DLQ) — each RF=3, `acks=all`, `enable.idempotence=true` |
+| `[39]` | **Job Consumer Svc** *(cluster)* | consumer group on `jobs.run` + `jobs.retry`; routes by `target_type` to the right Executor pool |
+| `[40]` | **Executor Svc** *(≈ 100 pods)*  | sandboxed; **claims via CAS**, runs user code, **heartbeats every 10 s**, polls `cancel:job:{id}`, writes terminal status + emits `jobs.status` event; **idempotent on `job_id`** |
+
+##### Reliability backstops
+
+| Cell | Component | Role |
+|------|-----------|------|
+| `[57]` | **Outbox Publisher** *(cluster, NEW)* | tails `outbox` (Debezium CDC or polled) → republishes to `jobs.run` / status topics — kills "stuck `QUEUED`" rows (Q6) |
+| `[61]` | **Stuck-IN_FLIGHT Sweeper**     | every N min, finds `status='RUNNING' AND lease_until < now()` → reset to `SCHEDULED, attempts++` — re-promoted on next Watcher tick |
+| `[26]` | **Kafka `jobs.status`**          | per-job heartbeats + outcomes; consumed by Status Consumer & Cron Emitter |
+
+##### Reading-only panels (not on the data path)
+
+| Cell | What |
+|------|------|
+| `[63]` | Latency budget (p99 ≤ 2 s) — see §8.3.15 |
+| `[64]` | Key invariants — see §8.3.16 |
+| `[65]` | Legend (arrow types) |
+| `[66]` | Alternatives at the hot tier (timer wheel, in-process timers, …) |
+| `[8]`  | "V2 fixes baked in (vs v1)" — see §8.3.17 |
+
+#### 8.3.2 Storage at a glance
+
+##### Postgres (durable, source of truth)
+
+| Table       | Cardinality                  | Used by                                     | Notes |
+|-------------|------------------------------|---------------------------------------------|-------|
+| `jobs`      | 1 row per logical job         | Job Svc · Watcher · Status Consumer · Sweeper | Sharded `hash(job_id) % 256`; partitioned by `fire_minute` |
+| `outbox`    | 1 row per pending Kafka event | Job Svc *(writer)* · Outbox Publisher *(reader)* | Drained on success; rows TTL-purged after 24 h |
+| `job_runs`  | 1 row per attempt             | Status Consumer (writer) · Search Svc (reader) | Append-only audit log |
+
+##### Redis cluster (hot tier — *not* durable)
+
+| Key                        | Type     | Purpose                                  | Population                |
+|----------------------------|----------|------------------------------------------|---------------------------|
+| `due:{shard}`              | ZSET     | hot firing index for next 5 min           | Watcher canonical · Job Svc best-effort |
+| `cancel:job:{id}`          | STRING   | cancel cooperative-flag                   | Job Svc on `POST /cancel` |
+| `last_polled_time:{shard}` | STRING   | watcher resume cursor                     | Watcher                    |
+| `status:job:{id}`          | HASH     | warm cache for `GET /jobs/{id}/status`    | Status Consumer            |
+
+##### Kafka topics
+
+| Topic           | Partitions | Producer       | Consumer            | Notes                                |
+|-----------------|------------|----------------|---------------------|--------------------------------------|
+| `jobs.run`      | 32         | Picker · Outbox Publisher | Job Consumer Svc | hot dispatch path                    |
+| `jobs.retry`    | 32         | Executor (on retry) | Job Consumer Svc | exponential-backoff fan-back         |
+| `jobs.dead`     | 16         | Executor (max attempts) | DLQ tools          | poison messages — manual triage      |
+| `jobs.status`   | 64         | Executor       | Status Consumer · Cron Emitter | heartbeats + outcomes  |
+
+#### 8.3.3 Control plane — who holds what lease
+
+`etcd` `[33]` is the **only** strongly-consistent control-plane store. It does **not** sit on the data path. Every shard-bound role acquires a lease on `/scheduler/shards/{N}/{role}`:
+
+| Role | # leases per pod | Failover |
+|------|------------------|----------|
+| Watcher    `[35]`       | 1 + per shard owned | TTL=3s, hb=1s ⇒ another pod takes over within ~3s |
+| Picker     `[37]`       | per shard owned     | same |
+| Outbox Publisher `[57]` | per shard owned     | same |
+| Cron Emitter `[28]`     | per cron-shard      | same |
+| Sweeper    `[61]`       | per shard owned     | same |
+
+Total leases: `5 roles × 256 shards ≈ 1280`. etcd cluster of 3 nodes handles this trivially.
+
+> **Critical invariant** (cell `[64]`, item 2): two pods can never own the same shard for the same role at the same time. Lease-holder is the only one allowed to call `ZRANGEBYSCORE+ZREM` (Picker) or `ZADD…NX` (Watcher). This is what makes the Lua atomic-pop sufficient for **at-most-one dispatcher per job** (Q15).
+
+---
+
+#### 8.3.4 Flow A — Schedule a *future* job (`fire_at > now + 5 min`)
+
+This is the canonical "long-tail" path — most jobs at submit time look like this.
+
+```
+[10] client ── POST /jobs ──▶ [11] LB+APIGW ── [12] Job Svc
+                                                      │
+                                              ① INSERT jobs (status='SCHEDULED')
+                                                      ▼
+                                               [14] Postgres (quorum)
+                                                      │
+                                                      ▼  (eventually)
+                                          ② [35] Watcher 1-min scan
+                                                      │
+                                              ③ ZADD…NX
+                                                      ▼
+                                              [36] Redis ZSET due:{shard}
+                                                      │
+                                              ④ Picker pops at fire_at
+                                                      ▼
+                                              (continues in Flow D + E)
+```
+
+**Steps**
+
+1. **A1 — Client → API Gateway** `[10]→[11]`. Auth (mTLS / OAuth2), per-tenant rate-limit (`limit:tenant:{id}`), `Idempotency-Key` header dedupe (24 h Redis cache).
+2. **A2 — API Gateway → Job Svc** `[11]→[12]`, edge labelled *"write APIs"*.
+3. **A3 — Validate** *(in Job Svc)*: payload size ≤ 64 KB, `fire_at_ms > now`, cron parseable, `target_type ∈ {http, kafka, grpc, lambda}`, target host on tenant allow-list.
+4. **A4 — Compute keys**: `job_id = UUIDv7`, `shard = hash(job_id) % 256`, `fire_minute = fire_at_ms / 60_000`.
+5. **A5 — Single Postgres txn** `[12]→[14]`:
+   ```sql
+   BEGIN;
+     INSERT INTO jobs(id, tenant_id, fire_at_ms, fire_minute, shard,
+                      schedule_type, payload, max_attempts, status, attempts)
+     VALUES (:job_id, …, 'SCHEDULED', 0);
+     -- (no outbox row yet — A is future-dated, Watcher will promote)
+   COMMIT;          -- acks = quorum
+   ```
+   The transaction returns only after a **synchronous quorum write to RF=3**. Job Svc replies `201 Created` with `job_id` to the client.
+6. **A6 — *(Best-effort short-circuit)*** `[12]→[36]` *if `fire_at - now ≤ 5 min`*: also `ZADD due:{shard} fire_at_ms job_id NX`. For pure Flow A (`fire_at > 5 min`) **this step is skipped** — the Watcher is the canonical promoter (next flow).
+
+> **What A guarantees**: durability (RF=3 quorum) before the 201 returns, and idempotency on retry of the same `Idempotency-Key`. **Not** guaranteed yet: that the job will actually fire — that's Flow C → Flow D.
+
+---
+
+#### 8.3.5 Flow B — Schedule a *near-term* / `runNow` job (`fire_at ≤ 5 min`)
+
+This is the path the v2 diagram annotation `[76]` calls out: *"Outbox only works for NOW case."*
+
+The challenge: a `runNow` job is supposed to fire **within seconds**, but the Watcher only ticks every 1 min — it would miss the firing window. The fix is the **outbox + Outbox Publisher** combo (cell `[16]` + `[57]`).
+
+```
+[10] ── [11] ── [12] Job Svc
+                       │
+                ① INSERT jobs (status='SCHEDULED')
+                + INSERT outbox (kafka_topic, kafka_payload)
+                       ▼  in SAME txn
+                  [14] Postgres
+                       │
+                       ▼ tail (CDC or poll)
+                  [57] Outbox Publisher
+                       │
+                       ▼ produce key=job_id
+                  [38] Kafka jobs.run
+                       │
+                       ▼  (continues in Flow D step D3 onward)
+```
+
+**Steps**
+
+1. **B1 — Submit** identical to A1–A4.
+2. **B2 — Single Postgres txn** `[12]→[14]`:
+   ```sql
+   BEGIN;
+     INSERT INTO jobs(...) VALUES (... 'SCHEDULED', ...);
+     INSERT INTO outbox(job_id, kafka_topic, kafka_payload)
+            VALUES (:id, 'jobs.run', :serialized);
+   COMMIT;          -- RF=3 quorum
+   ```
+   This is the **transactional outbox** pattern (Q6). Either both rows commit or neither does. *No "stuck QUEUED" rows are possible.*
+3. **B3 — Job Svc also `ZADD…NX` to Redis** `[12]→[36]` (best-effort, edge labelled *"if fire_at ≤ 5 min: ZADD (best-effort)"*). If Redis is up, Picker pops it within 100 ms; if Redis is down or the ZADD fails, the Outbox Publisher path still fires it.
+4. **B4 — Outbox Publisher tails** `[16]→[57]`: Debezium CDC on the `outbox` table (or a 200-ms polling loop with `SELECT … FOR UPDATE SKIP LOCKED`). Holds an etcd lease per outbox-shard.
+5. **B5 — Publish to Kafka** `[57]→[38]`: produces with `key = job_id` (so all events for one job land on the same partition; ordering is preserved). On ack, sets `outbox.status='sent'` (or deletes the row).
+6. **B6 onwards** — same as Flow D step D3 onward (consumer → executor).
+
+> **Why both ZADD and outbox?** The ZADD is the **fast path** (sub-second). The outbox is the **safety net** — it guarantees at-least-once delivery even if Redis ate the ZADD or Picker missed the tick. Combined with executor idempotency on `job_id`, double-fire is harmless.
+
+---
+
+#### 8.3.6 Flow C — Watcher promotion (canonical 5-minute preload)
+
+```
+                                  ① etcd lease: shard N
+                                          │
+                  [33] etcd ───────▶ [35] Watcher
+                                          │
+                                  ② every 1 min for each owned shard:
+                                          ▼
+                  [14] Postgres ──────────┘  SELECT … WHERE fire_at_ms BETWEEN
+                                              now() AND now()+5min
+                                              AND shard=N AND status='SCHEDULED'
+                  [34] last_polled_time     ◀── ③ persist cursor
+                                          │
+                                  ④ ZADD due:{shard} fire_at_ms job_id NX
+                                          ▼
+                                  [36] Redis ZSET due:{shard}
+```
+
+**Steps**
+
+1. **C1 — Acquire lease** `[33]→[35]`: each Watcher pod tries `etcdctl lease grant 3` then `put /scheduler/shards/N/watcher = pod_id`. Whoever wins owns shard N. Lease auto-renews via 1-second heartbeats.
+2. **C2 — 1-minute tick**: for each owned shard, query
+   ```sql
+   SELECT id, fire_at_ms FROM jobs
+    WHERE shard = :N
+      AND status = 'SCHEDULED'
+      AND fire_at_ms BETWEEN :last_polled AND now() + INTERVAL '5 minutes'
+    ORDER BY fire_at_ms
+    LIMIT 50000;
+   ```
+   *(`last_polled` from `[34]` Redis to avoid re-scanning what we already promoted.)*
+3. **C3 — Pipeline `ZADD … NX`** `[35]→[36]`: one Redis pipeline per batch. `NX` makes it idempotent — re-promotion is harmless.
+4. **C4 — Update cursor** `[35]→[34]`: `SET last_polled_time:{N} now()`.
+5. **C5 — On lease loss** *(network blip, GC pause)*: stop scanning that shard immediately. Another Watcher will take over within 3 s.
+
+> **Why 1 min + 5-min lookahead, not "every second"?** Bulk admission to Redis is much cheaper than per-job polling. The 5-min horizon ensures the Picker (which only sees the ZSET) has work to pop the moment a job becomes due. Latency from submit-to-fire is bounded by **`min(submit_zadd_path, watcher_period + picker_tick)` = min(100 ms, 60 s + 100 ms)** — the ZADD short-circuit gets the sub-second case.
+
+---
+
+#### 8.3.7 Flow D — Picker dispatch (the 100-ms hot path)
+
+This is the precision-critical loop — every box in this flow exists *because* of the p99 ≤ 2 s SLO.
+
+```
+                                  ① etcd lease: shard N
+                                          │
+                  [33] etcd ───────▶ [37] Picker  (tick = 100 ms)
+                                          │
+                                  ② Lua: ZRANGEBYSCORE 0 now()  +  ZREM   (atomic)
+                                          ▼
+                                  [36] Redis ZSET due:{shard}
+                                          │
+                                  ③ produce key=job_id (acks=all)
+                                          ▼
+                                  [38] Kafka jobs.run
+                                          │
+                                  ④ consume
+                                          ▼
+                                  [39] Job Consumer Svc
+                                          │
+                                  ⑤ dispatch by target_type
+                                          ▼
+                                  [40] Executor Svc
+```
+
+**Steps**
+
+1. **D1 — Lease** `[33]→[37]`: same etcd-lease story as Watcher. Picker only ticks shards it currently owns.
+2. **D2 — 100-ms tick**: every 100 ms, for each owned shard, run a single Redis Lua script:
+   ```lua
+   -- KEYS[1] = "due:{N}"   ARGV[1] = now_ms   ARGV[2] = max_batch (e.g. 500)
+   local due = redis.call("ZRANGEBYSCORE", KEYS[1], 0, ARGV[1], "LIMIT", 0, ARGV[2])
+   if #due == 0 then return {} end
+   redis.call("ZREM", KEYS[1], unpack(due))
+   return due
+   ```
+   **Atomicity is the entire point** — `ZRANGEBYSCORE+ZREM` in one Lua call = at-most-one Picker can pop a given member (Q15, invariant 2).
+3. **D3 — Produce to Kafka** `[37]→[38]`: for each `job_id` returned, produce to topic `jobs.run` with `key = job_id`. Settings: `acks=all`, `enable.idempotence=true`, `linger.ms=2`, `batch.size=16KB`, `compression=lz4`. Producer-side acks = ~5–20 ms.
+4. **D4 — Consume** `[38]→[39]`: Job Consumer Svc is a Kafka consumer group on `jobs.run` (and `jobs.retry`). Static membership + cooperative-sticky assignor (avoids the 10-s rebalance pause — Q21).
+5. **D5 — Dispatch by target_type** `[39]→[40]`: HTTP → HTTP-pool, Kafka → kafka-producer-pool, gRPC → grpc-pool, Lambda → invoke-pool. Three identical edges from `[39]→[40]` in the diagram represent the **three target-type pools**.
+
+> **Why Picker is separate from Job Consumer**: Picker holds the **shard lease** and produces to Kafka. Job Consumer holds the **partition assignment** from Kafka and dispatches to executors. Splitting them means Kafka is the only point of fan-out — adding executor capacity needs zero coordination with the shard plane.
+
+---
+
+#### 8.3.8 Flow E — Executor lifecycle (claim → run → finish)
+
+The Executor's contract: at-least-once delivery with idempotent target. Internally it has the **two-thread heartbeat protocol** of §10.6.
+
+**Steps**
+
+1. **E1 — Receive Kafka record** *(in `[40]` Executor)*: the message from `jobs.run`.
+2. **E2 — CAS claim** `[40]→[14]`:
+   ```sql
+   UPDATE jobs
+      SET status='RUNNING',
+          lease_owner=:pod_id, lease_until_ms=now_ms + 60000,
+          attempts=attempts+1
+    WHERE id=:job_id AND status='QUEUED';
+   ```
+   `0 rows updated` → already taken (Sweeper already re-promoted, or duplicate Kafka delivery). **Skip silently** — committing the offset is safe.
+3. **E3 — Spawn heartbeat thread** *(see §10.6.3 for the full pseudocode)*. Every 10 s: `UPDATE jobs SET lease_until_ms = now_ms + 60000 WHERE id=:id AND lease_owner=:me`.
+4. **E4 — Cancel pre-check** `[40]→[41]`: `GET cancel:job:{id}` — if set, skip to E7 with status `CANCELED`.
+5. **E5 — Run user code** with `idempotency_key = job_id` in any HTTP/gRPC/Lambda call to the target. Re-fires (from sweeper, from outbox republish, from offset re-delivery) all hit the same key → target dedupes.
+6. **E6 — On success / on user-code exception**, write terminal status:
+   ```sql
+   UPDATE jobs SET status=:terminal,
+                   lease_until_ms=NULL, lease_owner=NULL,
+                   updated_at_ms=now_ms
+            WHERE id=:id AND lease_owner=:me;       -- CAS
+   INSERT INTO job_runs(job_id, attempt, status, error_msg, …) VALUES (…);
+   ```
+7. **E7 — Emit `jobs.status`** `[40]→[26]`: produce a status event so the Status Consumer & Cron Emitter learn about it without polling Postgres.
+8. **E8 — Stop heartbeat thread, commit Kafka offset.** Order matters: commit only **after** E6 succeeded; otherwise a crash here would lose the terminal write but the offset would be committed → ghost job. (Sweeper would still recover.)
+
+> **Why CAS at every step**: zombie executors (post-GC pause). See §10.6.7.
+
+---
+
+#### 8.3.9 Flow F — Status feedback (executor → status pipe → search)
+
+```
+[40] Executor ── jobs.status ──▶ [26] Kafka ──▶ [27] Status Consumer
+                                                       │
+                                              UPSERT status_cache
+                                                       ▼
+                                                 [14] Postgres
+                                                       │
+                                              + warm  status:job:{id} HASH
+                                                       ▼
+                                              Redis (status cache)
+                                                       │
+                                              ◀────────┘ read by [13] Search Svc
+```
+
+**Steps**
+
+1. **F1 — Executor produces** to `jobs.status` (E7 above). Two event kinds: `heartbeat` (during run) and `outcome` (terminal).
+2. **F2 — Status Consumer** `[27]` consumes, batches up to 100 events, then runs:
+   - **Outcome**: `UPDATE jobs SET status=:t, last_error=…` (already covered by E6, this is just a fast path for indexing).
+   - `INSERT INTO job_runs(...)` for the audit trail.
+   - `HSET status:job:{id} status :t finished_at :ts` in Redis for fast `GET /jobs/{id}/status`.
+3. **F3 — Cron tee** `[27]→[28]` (edge labelled *"if cron job"*): if the completed job has `schedule_type='cron'` and is `SUCCEEDED`, hand off to Cron Emitter (Flow H).
+4. **F4 — Search Svc reads** `[13]→[14]` (replicas) and `[13]→Redis` for status. Read replicas tolerate ~1 s lag, which is below the 2 s SLO for status freshness (Q19).
+
+---
+
+#### 8.3.10 Flow G — Cancel a job
+
+The diagram annotation `[78]` is exactly *"explain how does a running job get cancelled"*. Three layers (Q8):
+
+```
+[10] ── POST /v1/jobs/{id}/cancel ──▶ [11] ──▶ [12] Job Svc
+                                                       │
+                                              ① CAS in Postgres
+                                                       ▼
+                                                 [14] jobs row
+                                                 status IN ('SCHEDULED','QUEUED')
+                                                          → 'CANCELED'
+                                              ② SET cancel:job:{id} EX <slack>
+                                                       ▼
+                                                 [41] Redis cancel-flag
+                                                       │
+                                              ③ Executor polls before each unit of work
+                                                       ▼
+                                                 [40] Executor checks → bail out
+```
+
+**Steps**
+
+1. **G1 — `POST /cancel`** `[10]→[11]→[12]`.
+2. **G2 — Postgres CAS** `[12]→[14]`:
+   ```sql
+   UPDATE jobs SET status='CANCELED'
+    WHERE id=:id AND status IN ('SCHEDULED','QUEUED');
+   ```
+   - `1 row updated` → cancel succeeded **before** the executor claimed it. The Picker may already have it on Kafka; the consumer's claim CAS will fail because status is now `CANCELED`. Skip silently.
+   - `0 rows updated` → either the job is `RUNNING` (try the cooperative path) or it's already terminal (return `409 Conflict` to the client).
+3. **G3 — Set Redis cancel flag** `[12]→[41]`: `SET cancel:job:{id} 1 EX (fire_at + slack - now)`.
+4. **G4 — Executor cooperative cancel** `[40]→[41]`: at every checkpoint (start of run, between sub-tasks, every 1 s), Executor `GET cancel:job:{id}`. If set, **stop, write `status=CANCELED` via CAS, emit `jobs.status` cancel-event**.
+5. **G5 — "Cancel in the last second"** *(see §14.4 + Q8)*: cancel is **best-effort for `RUNNING` jobs** — if Executor has already kicked off an irrevocable side effect (e.g. POSTed money) before checking the flag, no scheduler can recall it. The contract is *"cancel before fire_at, with high probability; cancel during run, cooperatively; cancel after terminal — refused."*
+
+---
+
+#### 8.3.11 Flow H — Cron / recurring (eager next-occurrence insert)
+
+The cell `[28]` Cron Emitter exists to enforce **invariant 4** (cell `[64]`): *"Cron next-occurrence is INSERTED before SUCCEEDED."* This avoids the gap where a cron job marked `SUCCEEDED` could be missing its next row (Q10).
+
+```
+[27] Status Consumer ── if cron job ──▶ [28] Cron Emitter
+                                                  │
+                                          ① INSERT next jobs row
+                                          (fire_at_ms = next_occurrence)
+                                                  ▼
+                                            [14] Postgres
+```
+
+**Steps**
+
+1. **H1 — Status Consumer detects cron success** *(F3 above)*: `schedule_type='cron'` AND outcome `SUCCEEDED`.
+2. **H2 — Cron Emitter** `[28]` computes the next firing time: `next = cron_next(cron_expr, cron_tz, now)`. Library handles DST + named time zones (Q22).
+3. **H3 — Single Postgres txn** `[28]→[14]`:
+   ```sql
+   BEGIN;
+     -- mark current row terminal IF NOT ALREADY (idempotent)
+     UPDATE jobs SET status='SUCCEEDED', updated_at_ms=now_ms
+       WHERE id=:current_id AND status='RUNNING';
+     -- insert NEXT row in same txn — invariant 4
+     INSERT INTO jobs(id, parent_id, fire_at_ms, fire_minute, shard, …, status)
+            VALUES (uuidv7(), :current_id, :next_ms, …, 'SCHEDULED');
+   COMMIT;
+   ```
+4. **H4 — Watcher will pick it up** on its next 1-min scan (Flow C). If `next - now ≤ 5 min`, an additional best-effort `ZADD` from Cron Emitter is also possible (not shown in the diagram for clarity).
+
+> **Why a separate Cron Emitter and not "Job Svc inserts next-occurrence inline"?** Because the *triggering event* is the success of the previous run, which only the Status Consumer knows. The Cron Emitter is the natural owner of that handoff and isolates cron-specific logic (DST, next-occurrence math) from the submit path.
+
+---
+
+#### 8.3.12 Flow I — Failure & retry / DLQ
+
+```
+[40] Executor ── on error / target 5xx ──▶ produce jobs.retry (delayed)
+                                                   ▼
+                                             [38] Kafka jobs.retry
+                                                   │
+                                          (delay queue / topic-per-tier)
+                                                   ▼
+                                             [39] Job Consumer Svc ──▶ retry as Flow D step D5
+                                                   │
+                                          (max_attempts reached)
+                                                   ▼
+                                             [38] Kafka jobs.dead (DLQ)
+```
+
+**Steps**
+
+1. **I1 — Executor catches user-code exception or target 5xx/timeout**.
+2. **I2 — Decide**: `attempts < max_attempts` ? then retry path : DLQ path.
+3. **I3 — Retry path** `[40]→[38]`: produce to `jobs.retry` with a *delay* equal to `backoff(attempts)` (e.g. exp 1s base, 5 min cap). Strategies for the delay:
+   - **Topic per delay tier** (`retry.10s`, `retry.1m`, `retry.5m`) — Job Consumer consumes only after the delay window has passed. Simple and works on plain Kafka.
+   - **Header-based delay + delay processor** (sleeps until ready). Requires extra service.
+4. **I4 — DLQ path** `[40]→[38]`: produce to `jobs.dead`. A separate ops topic; **does not auto-retry**. SLO: page on `jobs.dead` partition lag > 0 for > 5 min (Q21).
+5. **I5 — Mark in jobs row**:
+   ```sql
+   UPDATE jobs SET status='FAILED', last_error=…
+            WHERE id=:id AND lease_owner=:me;
+   ```
+
+> **Edge `[60]` in the diagram** *(Executor → Kafka.dispatch labelled "failure → jobs.retry (exp backoff)")* is exactly this path.
+
+---
+
+#### 8.3.13 Flow J — Stuck-IN_FLIGHT recovery (the Sweeper)
+
+Already detailed in **§10.5** (mechanics) and **§10.6** (lease/heartbeat protocol). The diagram shows it as edge `[62]` *(Sweeper → Postgres labelled "reconcile")*.
+
+**One-line summary**: every N minutes, `UPDATE jobs SET status='SCHEDULED', attempts++ WHERE status='RUNNING' AND lease_until_ms < now_ms AND shard=:owned`. Anything reset gets re-promoted by the next Watcher tick (Flow C).
+
+#### 8.3.14 Flow K — Outbox publisher (failsafe republish)
+
+```
+[16] outbox table ── tail (CDC or poll) ──▶ [57] Outbox Publisher
+                                                       │
+                                              produce key=job_id
+                                                       ▼
+                                              [38] Kafka jobs.run  (if missed)
+                                                       │
+                                              + republish status events (failsafe)
+```
+
+**Steps**
+
+1. **K1 — Outbox Publisher** `[57]` holds an etcd lease per outbox-shard.
+2. **K2 — Tail outbox** `[16]→[57]`:
+   - **CDC mode** (Debezium): subscribes to Postgres logical-replication stream for the `outbox` table. ~50 ms tail latency.
+   - **Poll mode**: every 200 ms `SELECT * FROM outbox WHERE status='pending' AND shard=:N FOR UPDATE SKIP LOCKED LIMIT 500;`.
+3. **K3 — Republish to Kafka** `[57]→[38]` (edge `[59]` *"republish (failsafe)"*): for each outbox row, produce with `key = job_id`. On Kafka ack: `UPDATE outbox SET status='sent'` (or `DELETE`).
+4. **K4 — Idempotency**: Kafka idempotent producer + executor `idempotency_key = job_id` makes duplicate publishes harmless.
+
+> **Why have an Outbox Publisher when the Picker already produces to Kafka?** Two reasons.
+> 1. **Flow B (`runNow`)** doesn't go through Picker — it goes outbox → Kafka directly. So the Outbox Publisher is the *primary* path for the immediate-fire case (§8.3.5).
+> 2. **Failsafe**: if Picker crashes between `ZREM` and Kafka produce *and* the Sweeper hasn't reached it yet, the outbox row (written in the same txn as the original `INSERT jobs`) is still pending — Outbox Publisher will eventually publish it. This is what makes "no stuck `QUEUED` rows" an invariant (Q6).
+
+---
+
+#### 8.3.15 Latency budget walk-through (cell `[63]`)
+
+The numbers on the diagram, justified:
+
+| Hop | Budget | Where it goes |
+|------|--------|---------------|
+| Picker tick                    | 100 ms       | Worst case wait until next 100-ms tick when a job becomes due |
+| Redis Lua pop                  | 10 ms        | In-VPC Redis; pipelined; CPU-bound on Lua interp |
+| Kafka produce ack (`acks=all`) | 20 ms        | RF=3, `min.insync.replicas=2`, in-AZ |
+| Kafka consumer poll            | 100 ms       | `fetch.max.wait.ms=20`, `fetch.min.bytes=1` |
+| Worker → target invoke         | 200 ms       | HTTP / gRPC; budget for handshake + first byte |
+| **Total p50**                  | **~430 ms**  | well within 2 s |
+| **Headroom**                   | **~1.5 s**   | for GC + tail latency + rebalance |
+
+> **The 100-ms Picker tick is what makes p99 ≤ 2 s achievable.** A 1-s tick (cell `[8]` v1 fix #2) was the v1 mistake — it could miss the 2-s SLO on its own.
+
+#### 8.3.16 Key invariants (cell `[64]`)
+
+The seven invariants printed in the diagram, in plain English:
+
+1. **Only the Picker produces to `jobs.run`** *(except Outbox Publisher's failsafe and `jobs.retry` which is Executor's)* — no direct push from Job Svc avoids ordering chaos (Q2).
+2. **Lua `ZRANGEBYSCORE+ZREM` ⇒ at-most-one dispatcher per job per Picker pop** (Q15).
+3. **Outbox + CAS on `jobs.status` ⇒ no stuck `QUEUED` rows** (Q6).
+4. **Cron next-occurrence is INSERTED before SUCCEEDED** in the same txn (Q10).
+5. **Cancel = Redis fast-path + Postgres CAS source-of-truth** — both are required (Q8).
+6. **Lease + heartbeat for stuck jobs, NOT a 15-s wall clock** (Q7, §10.6).
+7. **Submit jitters `fire_at` by U(0, 30 s)** unless tenant opts out — defuses thundering-herd at "9 AM" (Q16).
+
+If you can articulate these seven invariants on a whiteboard, you've narrated the entire correctness story of V2.
+
+#### 8.3.17 V2 fixes vs v1 (cell `[8]`)
+
+Why V2 looks the way it does — every box that says "(NEW)" in the diagram exists to fix a v1 weakness called out in the §21 Q&A:
+
+| Fix | New component | Fixes Q# |
+|-----|---------------|----------|
+| Redis ZSET hot tier (precision)              | `[36]`        | Q1 — polling math doesn't meet 2-s SLO |
+| Picker @ 100 ms with etcd shard leases       | `[37]` + `[33]` | Q1, Q11 |
+| Watcher / Pre-Loader (1-min preload)         | `[35]`        | Q3 — Watcher SPOF & restart |
+| Transactional outbox + Outbox Publisher       | `[16]` + `[57]` | Q6 — stuck QUEUED |
+| Lease + heartbeat for stuck-IN_FLIGHT         | `lease_*` cols + `[61]` | Q7 — 15-s wall clock is wrong |
+| Redis cancel-flag + Postgres CAS              | `[41]`        | Q8 — cancel TOCTOU |
+| Cron Emitter (eager next-occurrence)          | `[28]`        | Q10 — cron missing-next gap |
+| Per-tenant rate-limit + idempotency at API GW | `[11]`        | Q16, Q20 — fairness, retry-storms |
+
+Anything *not* on this list (`[12]` Job Svc, `[14]` Postgres, `[26]` `jobs.status`, `[27]` Status Consumer, `[39]` Job Consumer, `[40]` Executor) was already in v1 — its role is unchanged; V2 just hardened the surrounding pieces.
+
+#### 8.3.18 Reading the diagram in interview order
+
+When narrating V2 on a whiteboard, the order that produces the cleanest story is:
+
+1. **Top row first** (`[10]→[11]→[12]/[13]→[14]`) — establish where requests enter and where the source-of-truth lives. Mention shards + RF=3 + idempotency-key dedupe.
+2. **Postgres tables** (`[15]/[16]/[17]`) — sketch the schema, *especially the lease columns and the partial index for the Sweeper*.
+3. **etcd** (`[33]`) — the *only* control plane store; introduce shard leases.
+4. **Watcher** (`[35]`) — the canonical promoter (1-min tick, 5-min lookahead, ZADD…NX). Mention `last_polled_time` cursor.
+5. **Redis hot tier** (`[36]` + `[34]` + `[41]`) — ZSET, last-polled, cancel flags. *Stress that Redis is not durable.*
+6. **Picker** (`[37]`) — the precision engine (100-ms tick, Lua atomic pop). Introduce invariant #2.
+7. **Kafka dispatch** (`[38]`) — three topics; at-least-once with idempotent producer + executor idempotency key.
+8. **Job Consumer + Executor** (`[39]+[40]`) — claim CAS, heartbeat (lead into §10.6), retry/DLQ.
+9. **Status pipe** (`[26]+[27]`) — close the loop back to Postgres + Search Svc.
+10. **Cron Emitter** (`[28]`) — invariant #4 about next-occurrence in same txn.
+11. **Outbox Publisher** (`[16]+[57]`) — explain `runNow` *and* failsafe. Invariant #3.
+12. **Sweeper** (`[61]`) — the safety net; lead into §10.5/§10.6.
+13. **Latency budget + invariants panels** (`[63]+[64]`) — wrap with the SLO and the seven invariants.
+
+This is **also** the order each subsection above is written in. Walking the diagram in this sequence converts the V2 picture into a 6–8 minute interview narrative.
+
 ---
 
 ## 9. Component Deep-Dives

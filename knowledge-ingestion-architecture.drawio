@@ -1,0 +1,267 @@
+<mxfile host="app.diagrams.net" agent="cursor" version="24.0.0" type="device">
+  <diagram name="Knowledge-Ingestion" id="ki-1">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============== CORE (pink container) ============== -->
+        <mxCell id="core_container" value="Core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fad9e3;strokeColor=#a64d79;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="60" y="60" width="660" height="520" as="geometry" />
+        </mxCell>
+
+        <!-- Internal Article Creation Process -->
+        <mxCell id="internal_article" value="Internal Article&#10;Creation Process" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="220" y="110" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Connector Configuration -->
+        <mxCell id="connector_config" value="Connector&#10;Configuration" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="430" y="110" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- External content Ingestion Process -->
+        <mxCell id="external_ingest" value="External content&#10;Ingestion Process" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="430" y="220" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Knowledge Article Version -->
+        <mxCell id="kav" value="Knowledge Article&#10;Version" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="430" y="330" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- FFX -->
+        <mxCell id="ffx" value="FFX" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="280" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ContentDocument sub-box -->
+        <mxCell id="content_box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2f5;strokeColor=#a64d79;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="380" width="220" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="content_doc" value="ContentDocument" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="225" y="395" width="170" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="content_doc_link" value="ContentDocument&#10;Link" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="225" y="445" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="content_version" value="ContentVersion" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="225" y="505" width="170" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ZOOMIN (orange container) ============== -->
+        <mxCell id="zoomin_container" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fde2cf;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="760" y="60" width="240" height="380" as="geometry" />
+        </mxCell>
+
+        <mxCell id="zoomin_connector" value="Zoomin&#10;Connector" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="800" y="100" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="zoomin" value="Zoomin" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="210" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="zoomin_storage" value="Zoomin&#10;Storage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="800" y="350" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============== FORMAL KNOWLEDGE SOURCES (green container) ============== -->
+        <mxCell id="formal_container" value="Formal Knowledge Sources" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=bottom;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="60" width="220" height="320" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="S3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="100" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gdrive" value="Google Drive" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="160" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="confluence" value="Confluence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="220" width="140" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============== DATA CLOUD (blue container) ============== -->
+        <mxCell id="dc_container" value="Data Cloud" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="760" y="620" width="660" height="460" as="geometry" />
+        </mxCell>
+
+        <!-- CRM Connector (Salesforce-style) -->
+        <mxCell id="crm_connector" value="CRM Connector" style="shape=mxgraph.salesforce.cloud;html=1;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;fillColor=#00a1e0;strokeColor=#005fb2;" vertex="1" parent="1">
+          <mxGeometry x="800" y="690" width="80" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Data Streams -->
+        <mxCell id="data_streams" value="Data&#10;Streams" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="690" width="100" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Lakehouse -->
+        <mxCell id="lakehouse" value="Lakehouse" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="800" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Spark -->
+        <mxCell id="spark" value="Spark" style="rounded=20;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="900" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Milvus -->
+        <mxCell id="milvus" value="Milvus" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="1000" width="120" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============== INFORMAL KNOWLEDGE SOURCES ============== -->
+        <mxCell id="informal_container" value="Informal Knowledge Sources&#10;(eg. Chat transcripts, Slack&#10;conversations)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="380" y="700" width="280" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="slack" value="Slack" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="420" y="780" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="bucket" value="Bucket" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="540" y="780" width="100" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES ============== -->
+
+        <!-- Internal Article -> KAV (Stores in) -->
+        <mxCell id="e1" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="internal_article" target="kav">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1_lbl" value="Stores in" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="220" width="70" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Connector Config <-> External Ingest (Formal Knowledge sources) -->
+        <mxCell id="e2" style="endArrow=classic;startArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="connector_config" target="external_ingest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2_lbl" value="Formal Knowledge&#10;sources" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="170" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Connector Config -> Zoomin Connector (Formal Knowledge sources) -->
+        <mxCell id="e3" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="connector_config" target="zoomin_connector">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3_lbl" value="Formal Knowledge&#10;sources" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="620" y="110" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- External Ingest -> Zoomin (Reads From) -->
+        <mxCell id="e4" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="external_ingest" target="zoomin">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4_lbl" value="Reads From" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="225" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- External Ingest -> KAV (Stores in) -->
+        <mxCell id="e5" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="external_ingest" target="kav">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5_lbl" value="Stores in" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="595" y="285" width="60" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Zoomin -> Zoomin Storage (Normalized HTML + Raw Binary) -->
+        <mxCell id="e6" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="zoomin" target="zoomin_storage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6_lbl" value="Normalized HTML +&#10;Raw Binary" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="275" width="130" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Zoomin -> Formal Knowledge Sources (Reads From) -->
+        <mxCell id="e7" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="zoomin" target="formal_container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7_lbl" value="Reads From" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="985" y="225" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- KAV -> ContentDocument area (Attachments) -->
+        <mxCell id="e8" style="endArrow=classic;html=1;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" edge="1" parent="1" source="kav" target="content_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8_lbl" value="Attachments" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="430" y="385" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- KAV -> CRM Connector (Knowledge Article) -->
+        <mxCell id="e9" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="1" source="kav" target="crm_connector">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="510" y="640" />
+              <mxPoint x="840" y="640" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9_lbl" value="Knowledge&#10;Article" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="615" width="90" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ContentVersion -> CRM Connector (Content Version UDLO) -->
+        <mxCell id="e10" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;curved=1;" edge="1" parent="1" source="content_version" target="crm_connector">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="525" />
+              <mxPoint x="700" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10_lbl" value="Content Version&#10;UDLO" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="710" y="615" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- CRM Connector -> Data Streams -->
+        <mxCell id="e11" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="crm_connector" target="data_streams">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Data Streams -> Lakehouse (CDF) -->
+        <mxCell id="e12" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="data_streams" target="lakehouse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12_lbl" value="CDF" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="745" width="40" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Lakehouse <-> Spark (Chunks / Day0) -->
+        <mxCell id="e13" style="endArrow=classic;startArrow=classic;html=1;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" edge="1" parent="1" source="lakehouse" target="spark">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13_lbl" value="Chunks" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="900" width="60" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="e13b_lbl" value="Day0" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="930" width="60" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Spark -> Milvus (Store Vectors) -->
+        <mxCell id="e14" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="spark" target="milvus">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14_lbl" value="Store Vectors" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="970" width="90" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Spark -> FFX (File Content) -->
+        <mxCell id="e15" style="endArrow=classic;html=1;exitX=0;exitY=0.5;entryX=0.5;entryY=1;curved=1;" edge="1" parent="1" source="spark" target="ffx">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="200" y="930" />
+              <mxPoint x="130" y="930" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15_lbl" value="File Content" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="935" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Spark -> Informal Knowledge Sources -->
+        <mxCell id="e16" style="endArrow=classic;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="spark" target="informal_container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

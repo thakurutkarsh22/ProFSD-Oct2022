@@ -1026,7 +1026,9 @@ Schedule **never changes retroactively** — every trade row carries the `fee_sc
 
 ## 8. High-Level Architecture (HLD)
 
-> **Editable source:** [`assets/04-stock-broking-platform-hld.drawio`](./assets/04-stock-broking-platform-hld.drawio). Open in [diagrams.net](https://app.diagrams.net/) (`File → Open from device`) or with the *Draw.io Integration* extension in Cursor / VS Code.
+![Stock Broking Platform — HLD](./assets/04-stock-broking-platform-hld.drawio.svg)
+
+> **Editable source:** [`assets/04-stock-broking-platform-hld.drawio.svg`](./assets/04-stock-broking-platform-hld.drawio.svg). The SVG above is rendered by GitHub *and* carries the editable draw.io XML inside it — open the same file with the *Draw.io Integration* extension in Cursor / VS Code, or in [diagrams.net](https://app.diagrams.net/) (`File → Open from device`), and you can edit it in place.
 >
 > The diagram is laid out top-to-bottom along the **request flow**: clients at the top, edge / WS gateway, core services row, Kafka backbone, exchange + market-data pipes, external systems. The right-hand panels are the storage plane, the 9 invariants, the 8 numbered/colour-coded flows, and a latency-budget callout. Each step in §11 is annotated with the matching arrow id (e.g. `A4`).
 

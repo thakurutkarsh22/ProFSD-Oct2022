@@ -1,0 +1,772 @@
+<mxfile host="app.diagrams.net" agent="cursor" version="24.0.0" type="device">
+  <diagram name="YouTube-HLD" id="hld-yt-1">
+    <mxGraphModel dx="2400" dy="1800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3400" pageHeight="2400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============== TITLE ============== -->
+        <mxCell id="title" value="Design YouTube — High-Level Architecture&#10;(2 B users · 800 M DAU · 500 hrs uploaded/min · ~1 B hrs watched/day · CDN-served adaptive-bitrate HLS/DASH)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="10" width="2000" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Hot SLOs:  watch start (TTFF) p99 ≤ 1s · upload-publish p99 ≤ 60 s for 1080p · CDN cache-hit-ratio ≥ 95% · transcoding throughput &gt; uploaded hrs in &lt;30 min · view-count freshness ≤ 1 min" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="500" y="60" width="2400" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 1: CLIENTS ============== -->
+
+        <mxCell id="client_mobile" value="Mobile App&#10;(iOS / Android)&#10;&#10;HLS / LL-HLS player&#10;ABR client" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="120" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="client_web" value="Web SPA&#10;(YouTube.com)&#10;&#10;DASH / HLS player&#10;HTML5 + EME (DRM)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="120" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="client_tv" value="Smart TV / Console&#10;(YouTube TV, Roku,&#10;PS5, Chromecast)&#10;&#10;DASH (4K / HDR)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="520" y="120" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="client_creator" value="Creator Studio&#10;(uploader)&#10;&#10;resumable upload&#10;chunk = 8 MB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="120" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="client_live" value="Live Encoder&#10;(OBS / ffmpeg /&#10;mobile-go-live)&#10;&#10;RTMP / SRT push" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="920" y="120" width="180" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 2: GLOBAL EDGE — CDN + API GW ============== -->
+
+        <!-- CDN Group -->
+        <mxCell id="cdn_group" value="Global CDN (Google GFE / Cloud CDN-equivalent + ISP-resident YouTube Cache nodes)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#b85450;dashed=1;verticalAlign=top;fontStyle=1;fontColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="280" width="1200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="cdn_pop1" value="Edge PoP&#10;(US-East · ~30 sites)&#10;LRU + popularity score&#10;cache hit ratio ≥ 95%" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="320" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cdn_pop2" value="Edge PoP&#10;(EU · APAC ·&#10;LATAM · Africa)&#10;200+ PoPs total" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="320" y="320" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cdn_isp" value="ISP YouTube Cache&#10;(Open Connect-style)&#10;deployed inside&#10;ISP networks&#10;serves ~50% of bytes" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="520" y="320" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cdn_shield" value="Origin Shield&#10;(regional cache tier)&#10;absorbs cache-miss&#10;stampede before&#10;origin S3" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="320" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cdn_note" value="CDN strategy:&#10;1. Hot 20% videos PUSH-pre-positioned&#10;2. Long-tail PULL-on-demand (TTL 7 d)&#10;3. ABR segments cached at .ts/.m4s level&#10;4. Manifest .m3u8/.mpd cached short TTL (30 s)&#10;5. Range-request friendly · Brotli for manifests" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="950" y="310" width="310" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- API Gateway -->
+        <mxCell id="api_gw_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="310" width="280" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="api_gw_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="300" width="280" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="api_gw" value="API Gateway / Edge LB&#10;(Envoy / GFE, N pods)&#10;&#10;TLS · OAuth2 · JWT validate&#10;per-user + per-IP rate limit&#10;Idempotency-Key (Redis 24 h)&#10;routes /watch /upload /search /comment" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="290" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- WebSocket Gateway (live chat, notifications) -->
+        <mxCell id="ws_gw_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="310" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ws_gw_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1650" y="300" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ws_gw" value="WS Push Gateway&#10;(M pods · sticky)&#10;&#10;5–10 k conns/pod&#10;live chat · notifications&#10;upload-progress · &quot;next-up&quot;&#10;heartbeat 15 s · resume cursor" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="290" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- RTMP Ingest -->
+        <mxCell id="rtmp_back" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1940" y="310" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="rtmp" value="RTMP / SRT Ingest&#10;(regional anycast)&#10;&#10;1080p60 · low-latency&#10;ladder gen begins immediately&#10;forwards to Live Transcoder" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1930" y="300" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Identity / Auth (top right) -->
+        <mxCell id="auth" value="Auth Service&#10;(OAuth2 / OIDC)&#10;Google Sign-In · TOTP · Passkeys&#10;session TTL 30 d (refresh)&#10;short-lived JWT 1 h" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff4c3;strokeColor=#d6b656;fontStyle=1;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="2210" y="300" width="260" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="user_svc" value="User / Profile Service&#10;(channels · subscriptions ·&#10;watch-history preferences)&#10;Spanner-backed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="2500" y="300" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 3: CORE READ / WRITE SERVICES ============== -->
+
+        <!-- Upload Service -->
+        <mxCell id="upload_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="120" y="540" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="upload_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="110" y="530" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="upload_svc" value="Upload Service&#10;(stateless, N pods)&#10;&#10;issue resumable URL (TUS)&#10;chunk validate (sha256)&#10;assemble · INSERT video META&#10;produce video.uploaded" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="520" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Watch / Manifest Service -->
+        <mxCell id="watch_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="400" y="540" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="watch_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="390" y="530" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="watch_svc" value="Watch / Manifest Service&#10;(stateless)&#10;&#10;GET /watch?v={id} → metadata + .m3u8&#10;builds per-user signed URL&#10;(TTL 6 h)  · DRM license url&#10;CDN PoP selection (ASN-based)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="520" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Search Service -->
+        <mxCell id="search_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="680" y="540" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="search_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="670" y="530" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="search_svc" value="Search Service&#10;(stateless)&#10;&#10;query parse · BM25 + ANN&#10;personalisation re-ranker&#10;autocomplete (typeahead)&#10;trending terms cache" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="520" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Recommendation Service -->
+        <mxCell id="reco_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="940" y="540" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="reco_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="930" y="530" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="reco_svc" value="Recommendation Service&#10;(stateless)&#10;&#10;candidate-gen (collab + content)&#10;DNN ranker (two-tower)&#10;diversity / freshness re-rank&#10;reco cache (Redis, TTL 5 m)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="920" y="520" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Engagement Service -->
+        <mxCell id="eng_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="540" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="eng_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="530" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="eng_svc" value="Engagement Service&#10;(comments · likes · subs)&#10;&#10;POST /comment · /like · /subscribe&#10;moderation hook (toxicity)&#10;outbox → engagement.events&#10;rate-limit per channel" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="520" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Notification Service -->
+        <mxCell id="notif_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="540" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="notif_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1490" y="530" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="notif_svc" value="Notification Service&#10;&#10;new-upload from sub channel&#10;reply-to-comment, milestones&#10;fan-out: APNS / FCM /&#10;email (SES) / in-app (WS)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1480" y="520" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Ad Server -->
+        <mxCell id="ads_svc" value="Ads Decisioning&#10;(out-of-scope detail)&#10;&#10;pre-roll · mid-roll · banner&#10;targets via reco features" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1780" y="520" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Live Transcoder -->
+        <mxCell id="live_xc_back" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="2050" y="540" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="live_xc" value="Live Transcoder&#10;(GPU pool · LL-HLS / LL-DASH)&#10;&#10;chunk = 1 s · 5–10 s glass-to-glass&#10;ladder gen on the fly&#10;writes to Live Origin S3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2040" y="520" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- View Counter Service -->
+        <mxCell id="view_svc" value="View / Beacon Collector&#10;(stateless)&#10;&#10;client-beacon &gt; 30 s watch-time&#10;dedupe by (user_id, video_id, day)&#10;produces watch.events" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2300" y="520" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- DRM License Service -->
+        <mxCell id="drm" value="DRM License Service&#10;(Widevine · FairPlay ·&#10;PlayReady)&#10;short-lived (30 m) keys&#10;HSM-backed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff4c3;strokeColor=#d6b656;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="2580" y="520" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 4: KAFKA ASYNC BACKBONE ============== -->
+
+        <mxCell id="kafka_group" value="Kafka cluster — async backbone (RF=3, acks=all, idempotent producer)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9673a6;dashed=1;verticalAlign=top;fontStyle=1;fontColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="780" width="2720" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kf_uploaded" value="video.uploaded&#10;&#10;NEW · MULTIPART_DONE&#10;keyed by video_id&#10;48 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="820" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_transcoded" value="video.transcoded&#10;&#10;LADDER_READY · THUMB_READY&#10;keyed by video_id&#10;48 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="340" y="820" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_indexed" value="video.indexed&#10;&#10;text + ASR + tags ready&#10;keyed by video_id&#10;24 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="820" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_watch" value="watch.events&#10;&#10;view-beacon · seek · skip&#10;keyed by user_id&#10;256 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="820" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_engagement" value="engagement.events&#10;&#10;like · comment · subscribe&#10;keyed by user_id&#10;128 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="820" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_notify" value="notify.events&#10;&#10;upload-by-sub · reply · milestone&#10;keyed by recipient_user_id&#10;128 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="820" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_audit" value="audit.events&#10;&#10;every login · upload · DMCA&#10;append-only · 7 yr retention&#10;tiered to GCS after 30 d" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1480" y="820" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_dlq" value="*.dlq&#10;&#10;poison messages&#10;manual triage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1720" y="820" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_live" value="live.segments&#10;&#10;1-s LL-HLS chunk events&#10;keyed by stream_id&#10;64 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1920" y="820" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_features" value="features.stream&#10;&#10;real-time ML features&#10;(impressions · CTR ·&#10;watch-time deltas)&#10;keyed by user_id&#10;256 partitions" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2140" y="820" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_moderation" value="moderation.events&#10;&#10;NSFW · copyright hit ·&#10;hate-speech flag&#10;reviewer queue" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2380" y="820" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kf_note" value="Kafka invariants:&#10;• exactly-once-into-store via outbox + transactional consumer&#10;• consumer lag SLO &lt; 30 s for hot topics, &lt; 5 m for analytics&#10;• tiered storage: hot 7 d on local SSD → S3 cold" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2620" y="810" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 5: PROCESSING WORKERS ============== -->
+
+        <!-- Transcoding Pool -->
+        <mxCell id="xc_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="120" y="1080" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="xc_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="110" y="1070" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="xc_workers" value="Transcoding Workers&#10;(GPU + CPU pool · 10s of K nodes)&#10;&#10;FFmpeg / x264 / VP9 / AV1&#10;split video by GOP → distribute &#10;per-segment parallel encode&#10;outputs HLS .ts + DASH .m4s&#10;ladder: 144p · 360p · 480p · 720p&#10;1080p · 1440p · 2160p (4K)&#10;containers: H.264, VP9, AV1, HEVC" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="1060" width="280" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Thumbnail Service -->
+        <mxCell id="thumb_svc" value="Thumbnail Service&#10;(GPU)&#10;&#10;extract N frames&#10;(t=10%, 30%, 50%, 70%, 90%)&#10;auto-pick most click-worthy (CV)&#10;creator-uploaded override" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="420" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- ASR / Captions -->
+        <mxCell id="asr_svc" value="ASR / Captions&#10;(speech-to-text)&#10;&#10;auto-generate subtitles&#10;multi-language translation&#10;writes .vtt to S3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Content ID / Copyright -->
+        <mxCell id="content_id" value="Content-ID&#10;(audio + video&#10;fingerprint match)&#10;&#10;peak-audio chroma · phash&#10;against rights-holder DB&#10;→ block / monetize / mute" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="900" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- NSFW / Safety -->
+        <mxCell id="safety" value="Safety / NSFW Scan&#10;(CV + audio classifier)&#10;&#10;CSAM hash match (PhotoDNA)&#10;hate / violence detector&#10;age-restrict suggestion" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- View Aggregator (Flink) -->
+        <mxCell id="view_agg_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="1080" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="view_agg_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1370" y="1070" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="view_agg" value="View Aggregator&#10;(Flink / Beam)&#10;&#10;tumbling 1-min windows&#10;per (video_id, day)&#10;de-dup via HLL+ key&#10;Bigtable INCR · Kafka commit&#10;watermark = max(processing,&#10;event-time + 5 m late)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="1060" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Trending / Top-K -->
+        <mxCell id="trending" value="Trending Engine&#10;(Top-K sketches)&#10;&#10;Count-Min + Heap&#10;per region · per category&#10;refresh every 10 min" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Recommendation Pipeline -->
+        <mxCell id="reco_pipe_back2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1900" y="1080" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="reco_pipe_back1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1890" y="1070" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="reco_pipe" value="Recommendation Pipeline&#10;(Spark · Flink · TensorFlow)&#10;&#10;feature pipeline (batch + stream)&#10;candidate-gen training&#10;ranker training (DNN two-tower)&#10;A/B framework&#10;publish to feature store + model store" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1880" y="1060" width="280" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Search Indexer -->
+        <mxCell id="search_idx" value="Search Indexer&#10;(consumes video.indexed)&#10;&#10;build inverted index +&#10;ANN vector index&#10;publish to ES + Vespa" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2200" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Notification Worker -->
+        <mxCell id="notif_worker" value="Notification Worker&#10;(consumes notify.events)&#10;&#10;fan-out to APNS / FCM / SES&#10;back-off + DLQ&#10;rate-cap per recipient" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2440" y="1070" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Outbox Publisher -->
+        <mxCell id="outbox" value="Outbox Publisher&#10;(per shard)&#10;&#10;tail order_outbox · video_outbox&#10;produce to Kafka&#10;at-least-once · idempotent dedupe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="2680" y="1070" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 6: STORES ============== -->
+
+        <mxCell id="origin_raw" value="Origin Object Store — RAW&#10;(GCS / S3)&#10;&#10;original master file&#10;sha256 keyed&#10;180-day retention&#10;then deletion-eligible&#10;encrypted at rest (KMS)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="1340" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="origin_xc" value="Origin — TRANSCODED&#10;(GCS / S3)&#10;&#10;HLS .ts + DASH .m4s segments&#10;manifests .m3u8 / .mpd&#10;thumbnails · captions .vtt&#10;all CDN-fronted" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1340" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="meta_db" value="Video Metadata DB&#10;(Spanner / Vitess)&#10;&#10;videos · channels · users&#10;global secondary indexes&#10;sharded by video_id&#10;strong consistency" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="1340" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="comments_db" value="Comments / Likes&#10;(Bigtable / Cassandra)&#10;&#10;PK = (video_id, ts_desc)&#10;wide-row pagination&#10;shard by video_id&#10;eventually consistent" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="940" y="1340" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="counters_db" value="View Counters&#10;(Bigtable + Redis HLL)&#10;&#10;PK = (video_id, day)&#10;hot atomic INCR in Redis&#10;flush every 60 s to Bigtable&#10;HLL for unique-viewer counts" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="1340" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="search_index" value="Search Index&#10;(Elasticsearch / Vespa)&#10;&#10;BM25 + ANN (vectors)&#10;inverted index on title,&#10;desc, ASR captions, tags&#10;rebuild nightly + delta" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="1340" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="feature_store" value="Feature Store&#10;(online / offline)&#10;&#10;BigQuery (offline) +&#10;Bigtable (online)&#10;user · video · context features&#10;updated &lt; 1 min from event" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1680" y="1340" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="model_store" value="Model Store&#10;(versioned)&#10;&#10;ranker DNN versions&#10;A/B-flag promotion&#10;TF Serving / Vertex AI" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1920" y="1340" width="200" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="redis_hot" value="Redis Hot Cache&#10;&#10;video metadata (TTL 5 m)&#10;reco lists per user (TTL 5 m)&#10;view counters (atomic INCR)&#10;rate-limit token buckets&#10;session lookups" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2140" y="1340" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cold_storage" value="Cold / Archive&#10;(GCS Coldline / S3 Glacier)&#10;&#10;videos &gt;180 d &amp; &lt; 1 view/day&#10;evict from hot tier&#10;rehydrate on demand (~minutes)&#10;cost: 1/10th of hot" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2380" y="1340" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="audit_log" value="Audit Log&#10;(append-only)&#10;&#10;login · upload · DMCA · admin&#10;ClickHouse + S3 cold&#10;7-yr retention" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2620" y="1340" width="200" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- ============== ROW 7: ANALYTICS / OBSERVABILITY / EXTERNAL ============== -->
+
+        <mxCell id="analytics_dwh" value="Data Warehouse&#10;(BigQuery / Snowflake)&#10;&#10;watch.events · engagement&#10;feeds offline reco training&#10;creator analytics dashboard" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="100" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rt_olap" value="Real-time OLAP&#10;(Druid / Pinot)&#10;&#10;creator-studio dashboards&#10;low-latency aggs over&#10;watch.events · engagement" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="metrics" value="Prometheus + Grafana + traces (Jaeger)&#10;&#10;• TTFF (time-to-first-frame) p50/p95/p99&#10;• cache_hit_ratio per PoP, per video&#10;• transcode_lag_seconds&#10;• reco_serve_latency_ms&#10;• kafka_consumer_lag" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff4c3;strokeColor=#d6b656;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="660" y="1620" width="320" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sweeper" value="Stuck-job Sweeper&#10;(at-least-once safety net)&#10;&#10;every 5 min: video.uploaded&#10;rows older than 30 m without&#10;video.transcoded → re-enqueue" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="1620" width="280" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="moderation_queue" value="Moderation Console&#10;(humans + ML triage)&#10;&#10;flagged content review&#10;DMCA · NSFW · hate&#10;legal hold workflows" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- External actors -->
+        <mxCell id="rights_db" value="Rights-Holders DB&#10;(record labels · studios)&#10;&#10;fingerprint reference set&#10;ContentID match feed" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#cccccc;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1620" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ad_exchange" value="Ad Exchanges&#10;(DV360 · AdSense)&#10;&#10;real-time bidding&#10;reporting (impressions, clicks)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#cccccc;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1900" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="payment_partners" value="Payment Partners&#10;(YouTube Premium · Super Chat)&#10;&#10;Stripe · Google Pay · UPI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#cccccc;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2180" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="dmca_partners" value="Legal / DMCA&#10;(rights-holders · law-enforcement)&#10;&#10;takedown · counter-claim&#10;transparency reports" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#cccccc;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="2460" y="1620" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — UPLOAD FLOW (U) — BLUE ============== -->
+
+        <mxCell id="e_creator_apigw" value="U1: GET /upload/init&#10;(resumable URL)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;" edge="1" parent="1" source="client_creator" target="api_gw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_apigw_upload" value="U2: route to Upload Service" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;" edge="1" parent="1" source="api_gw" target="upload_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_upload_origin" value="U3: chunked PUT&#10;(8 MB) directly to&#10;Origin RAW (signed URL)" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;" edge="1" parent="1" source="upload_svc" target="origin_raw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_upload_meta" value="U4: INSERT video&#10;status=UPLOADED" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;" edge="1" parent="1" source="upload_svc" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_upload_kafka" value="U5: produce&#10;video.uploaded" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#1976D2;" edge="1" parent="1" source="upload_svc" target="kf_uploaded">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — TRANSCODING FLOW (T) — GREEN ============== -->
+
+        <mxCell id="e_kafka_xc" value="T1: poll" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#2E7D32;" edge="1" parent="1" source="kf_uploaded" target="xc_workers">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_originraw" value="T2: read raw bytes&#10;(range requests)" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2;fontSize=11;fontColor=#2E7D32;" edge="1" parent="1" source="xc_workers" target="origin_raw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_originxc" value="T3: write HLS / DASH&#10;ladder + manifests" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#2E7D32;" edge="1" parent="1" source="xc_workers" target="origin_xc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_thumb" value="T4: spawn thumb job" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=1.5;fontSize=11;fontColor=#2E7D32;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="xc_workers" target="thumb_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_asr" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=1.5;fontSize=11;fontColor=#2E7D32;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="xc_workers" target="asr_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_contentid" value="T5: parallel scan" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=1.5;fontSize=11;fontColor=#2E7D32;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="xc_workers" target="content_id">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_safety" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=1.5;fontSize=11;fontColor=#2E7D32;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="xc_workers" target="safety">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_xc_kafka_done" value="T6: produce&#10;video.transcoded" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#2E7D32;" edge="1" parent="1" source="xc_workers" target="kf_transcoded">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kfdone_meta" value="T7: tail · UPDATE&#10;video status=PUBLISHED" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#2E7D32;" edge="1" parent="1" source="kf_transcoded" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ASR / ContentID outputs -->
+        <mxCell id="e_asr_kafka" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=1.5;fontSize=11;dashed=1;dashPattern=4 4;fontColor=#2E7D32;" edge="1" parent="1" source="asr_svc" target="kf_indexed">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_contentid_mod" value="match → flag" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=1.5;fontSize=11;dashed=1;dashPattern=4 4;fontColor=#2E7D32;" edge="1" parent="1" source="content_id" target="kf_moderation">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_contentid_rights" value="rights-holder feed" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;dashed=1;dashPattern=6 4;fontColor=#666666;" edge="1" parent="1" source="content_id" target="rights_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — WATCH FLOW (W) — RED ============== -->
+
+        <mxCell id="e_mobile_cdn" value="W1: GET .ts segment" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#C62828;" edge="1" parent="1" source="client_mobile" target="cdn_pop1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_web_cdn" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;" edge="1" parent="1" source="client_web" target="cdn_pop2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_tv_cdn" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;" edge="1" parent="1" source="client_tv" target="cdn_isp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_cdn_shield" value="W2: cache miss → shield" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2;fontSize=11;dashed=1;dashPattern=6 4;fontColor=#C62828;" edge="1" parent="1" source="cdn_pop1" target="cdn_shield">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_shield_origin" value="W3: shield miss → origin" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2;fontSize=11;dashed=1;dashPattern=6 4;fontColor=#C62828;" edge="1" parent="1" source="cdn_shield" target="origin_xc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_apigw_watch" value="W4: GET /watch?v=&#10;return manifest URL" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#C62828;" edge="1" parent="1" source="api_gw" target="watch_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_watch_meta" value="W5: read video meta" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=2;fontSize=11;fontColor=#C62828;" edge="1" parent="1" source="watch_svc" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_watch_redis" value="W6: hot cache" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=1.5;fontSize=11;fontColor=#C62828;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="watch_svc" target="redis_hot">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_watch_drm" value="W7: DRM license&#10;url stamped in manifest" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=1.5;fontSize=11;fontColor=#C62828;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="watch_svc" target="drm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — RECOMMENDATION FLOW (R) — PURPLE ============== -->
+
+        <mxCell id="e_apigw_reco" value="R1: GET /home /next-up" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#6A1B9A;" edge="1" parent="1" source="api_gw" target="reco_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_reco_redis" value="R2: per-user reco cache" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=11;fontColor=#6A1B9A;" edge="1" parent="1" source="reco_svc" target="redis_hot">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_reco_features" value="R3: read user · video features" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=11;fontColor=#6A1B9A;" edge="1" parent="1" source="reco_svc" target="feature_store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_reco_model" value="R4: load ranker" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=1.5;fontSize=11;fontColor=#6A1B9A;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="reco_svc" target="model_store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_pipe_features" value="R5: publish features" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=11;fontColor=#6A1B9A;" edge="1" parent="1" source="reco_pipe" target="feature_store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_pipe_model" value="R6: publish ranker" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=11;fontColor=#6A1B9A;" edge="1" parent="1" source="reco_pipe" target="model_store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_pipe_features_kafka" value="tail features.stream" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=2;fontSize=11;fontColor=#6A1B9A;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="kf_features" target="reco_pipe">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — ENGAGEMENT FLOW (E) — TEAL ============== -->
+
+        <mxCell id="e_apigw_eng" value="E1: POST /comment /like" style="endArrow=classic;html=1;rounded=0;strokeColor=#00838F;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#00838F;" edge="1" parent="1" source="api_gw" target="eng_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_eng_comments" value="E2: INSERT comment&#10;(with outbox row)" style="endArrow=classic;html=1;rounded=0;strokeColor=#00838F;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#00838F;" edge="1" parent="1" source="eng_svc" target="comments_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_eng_kafka" value="E3: produce engagement.events&#10;(via Outbox Publisher)" style="endArrow=classic;html=1;rounded=0;strokeColor=#00838F;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#00838F;" edge="1" parent="1" source="eng_svc" target="kf_engagement">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kfeng_notify" value="E4: derive notify.events" style="endArrow=classic;html=1;rounded=0;strokeColor=#00838F;strokeWidth=2;fontSize=11;fontColor=#00838F;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="kf_engagement" target="kf_notify">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — VIEW COUNT FLOW (V) — ORANGE ============== -->
+
+        <mxCell id="e_client_view" value="V1: watch beacon&#10;(qoe + quartiles)" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#EF6C00;" edge="1" parent="1" source="client_mobile" target="view_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_view_kafka" value="V2: produce watch.events" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#EF6C00;" edge="1" parent="1" source="view_svc" target="kf_watch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kfwatch_agg" value="V3: tail · 1-min windows" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#EF6C00;" edge="1" parent="1" source="kf_watch" target="view_agg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_agg_counters" value="V4: INCR counters&#10;(Bigtable + Redis)" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#EF6C00;" edge="1" parent="1" source="view_agg" target="counters_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_agg_redis" value="HLL unique-viewer" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=1.5;fontSize=11;fontColor=#EF6C00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="view_agg" target="redis_hot">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_agg_features" value="V5: emit features.stream" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2;fontSize=11;fontColor=#EF6C00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="view_agg" target="kf_features">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_agg_trending" value="V6: feed Trending" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=2;fontSize=11;fontColor=#EF6C00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="view_agg" target="trending">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — LIVE FLOW (L) — BROWN ============== -->
+
+        <mxCell id="e_live_rtmp" value="L1: RTMP / SRT push" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#4E342E;" edge="1" parent="1" source="client_live" target="rtmp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_rtmp_xc" value="L2: forward to&#10;Live Transcoder" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#4E342E;" edge="1" parent="1" source="rtmp" target="live_xc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_livexc_origin" value="L3: write 1-s LL-HLS chunks" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#4E342E;" edge="1" parent="1" source="live_xc" target="origin_xc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_livexc_kafka" value="L4: produce live.segments" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#4E342E;" edge="1" parent="1" source="live_xc" target="kf_live">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== EDGES — NOTIFICATION / WS FAN-OUT ============== -->
+
+        <mxCell id="e_kfnotif_worker" value="N1: tail notify.events" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#666666;" edge="1" parent="1" source="kf_notify" target="notif_worker">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_worker_ws" value="N2: in-app push (WS frame)" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#666666;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="notif_worker" target="ws_gw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ws_clients" value="N3: WS frames (sticky)" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#666666;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="ws_gw" target="client_mobile">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Search indexer -->
+        <mxCell id="e_kfindex_idxer" value="S1: tail · build delta" style="endArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=2;fontSize=11;fontColor=#455A64;" edge="1" parent="1" source="kf_indexed" target="search_idx">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_idxer_es" value="S2: bulk index" style="endArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=2;fontSize=11;fontColor=#455A64;" edge="1" parent="1" source="search_idx" target="search_index">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_apigw_search" value="S3: GET /search?q=" style="endArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=2.5;fontSize=11;fontStyle=1;fontColor=#455A64;" edge="1" parent="1" source="api_gw" target="search_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_search_es" value="S4: query ES" style="endArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=2;fontSize=11;fontColor=#455A64;" edge="1" parent="1" source="search_svc" target="search_index">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Outbox publisher edges -->
+        <mxCell id="e_outbox_meta" value="tail outbox" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=1.5;fontSize=11;fontColor=#D79B00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="outbox" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_outbox_comments" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=1.5;fontSize=11;fontColor=#D79B00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="outbox" target="comments_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_outbox_kafka" value="produce" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=2;fontSize=11;fontColor=#D79B00;" edge="1" parent="1" source="outbox" target="kf_engagement">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Sweeper -->
+        <mxCell id="e_sweeper_meta" value="reconcile" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=1.5;fontSize=11;fontColor=#D79B00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="sweeper" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sweeper_kafka" value="re-enqueue stuck" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=1.5;fontSize=11;fontColor=#D79B00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="sweeper" target="kf_uploaded">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Auth + User edges -->
+        <mxCell id="e_apigw_auth" value="JWT validate" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="api_gw" target="auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_apigw_user" value="profile · subs lookup" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="api_gw" target="user_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Cold storage edge -->
+        <mxCell id="e_origin_cold" value="lifecycle policy:&#10;moves &gt;180 d unwatched" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="origin_xc" target="cold_storage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- DWH edges -->
+        <mxCell id="e_kfwatch_dwh" value="ETL · daily" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="kf_watch" target="analytics_dwh">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kfwatch_olap" value="real-time ingest" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="kf_watch" target="rt_olap">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kfaudit_audit" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="kf_audit" target="audit_log">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Moderation feedback -->
+        <mxCell id="e_kfmod_console" value="reviewer queue" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=1.5;fontSize=11;fontColor=#D79B00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="kf_moderation" target="moderation_queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_console_meta" value="hide / delete / age-restrict" style="endArrow=classic;html=1;rounded=0;strokeColor=#D79B00;strokeWidth=1.5;fontSize=11;fontColor=#D79B00;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="moderation_queue" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dmca_console" value="DMCA notice" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="dmca_partners" target="moderation_queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Ads edges -->
+        <mxCell id="e_apigw_ads" value="ad-slot decision" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=4 4;" edge="1" parent="1" source="api_gw" target="ads_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ads_exchange" value="RTB" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#666666;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="ads_svc" target="ad_exchange">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== STICKY NOTES — INVARIANTS ============== -->
+
+        <mxCell id="note_ttff" value="Time-To-First-Frame (TTFF) budget — p99 ≤ 1 s:&#10;• DNS + TLS handshake to PoP: 100 ms (close to user)&#10;• /watch API → manifest URL: 80 ms (cached metadata)&#10;• fetch .m3u8 manifest: 50 ms (CDN-cached)&#10;• fetch first .ts segment (4 s @ 720p ≈ 1 MB): 300 ms&#10;• demux + decode warm-up: 200 ms&#10;TOTAL ≈ 730 ms p50 · ~1 s p99 (with cache hit)" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2840" y="1080" width="320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e_note_ttff" style="endArrow=none;html=1;dashed=1;strokeColor=#666666;" edge="1" parent="1" source="note_ttff" target="watch_svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="note_xc" value="Transcoding throughput:&#10;• 500 hrs uploaded/min &gt; 30 K hrs/hr&#10;• must encode &gt; 1× real-time per worker&#10;• split video into N GOP chunks → encode in parallel&#10;• 1 hr 1080p ≈ 5 min on 8 GPUs (~12× real-time)&#10;• ladder = 7 renditions · ~30 K hrs/hr × 7 ≈ 210 K&#10;  rendition-hrs/hr → ~30 K active GPUs steady-state" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2840" y="1260" width="320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e_note_xc" style="endArrow=none;html=1;dashed=1;strokeColor=#666666;" edge="1" parent="1" source="note_xc" target="xc_workers">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="note_egress" value="CDN egress numbers:&#10;• 1 B watch-hours/day · ~3 Mbps avg = ~3 EB/day egress&#10;• 95% from edge / ISP-cache → only ~5% bytes touch origin&#10;• shield tier reduces origin RPS 10×&#10;• range-requests friendly: each .ts cached independently&#10;• manifests TTL 30 s (allow rolling-window updates for live)" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2840" y="1440" width="320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e_note_egress" style="endArrow=none;html=1;dashed=1;strokeColor=#666666;" edge="1" parent="1" source="note_egress" target="cdn_pop2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="note_consistency" value="Consistency contract:&#10;• Video metadata: STRONG (Spanner) — title/desc/owner cannot stale&#10;• Comments / likes: EVENTUAL (Bigtable) — OK to be ~seconds stale&#10;• View count: EVENTUAL · ≤ 60 s freshness&#10;• Recommendations: STALE-OK — TTL 5 min reco cache&#10;• DRM license: STRONG · must check entitlement at request time" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2840" y="1620" width="320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e_note_consistency" style="endArrow=none;html=1;dashed=1;strokeColor=#666666;" edge="1" parent="1" source="note_consistency" target="meta_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============== FLOW LEGEND ============== -->
+
+        <mxCell id="legend_box" value="Flow Legend  (8 numbered flows)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=14;fontStyle=1;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1820" width="2080" height="280" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_U_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#1976D2;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="1865" as="sourcePoint" />
+            <mxPoint x="180" y="1865" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_U_text" value="U — Upload (5 steps): Creator → API GW → Upload Svc → Origin RAW + Metadata DB → produce video.uploaded" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#1976D2;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1850" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_T_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#2E7D32;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="1900" as="sourcePoint" />
+            <mxPoint x="180" y="1900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_T_text" value="T — Transcoding (7 steps): Kafka video.uploaded → Workers split &amp; encode (HLS/DASH ladder) → write Origin TRANSCODED → spawn Thumb / ASR / ContentID / Safety → publish video.transcoded → mark PUBLISHED" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1885" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_W_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#C62828;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="1935" as="sourcePoint" />
+            <mxPoint x="180" y="1935" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_W_text" value="W — Watch (7 steps): Client → CDN PoP (cache-hit) → on miss → Shield → Origin TRANSCODED.   /watch API → Watch Svc → Metadata DB / Redis → manifest URL + DRM license URL." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#C62828;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1920" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_R_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#6A1B9A;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="1970" as="sourcePoint" />
+            <mxPoint x="180" y="1970" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_R_text" value="R — Recommendation (6 steps): /home → Reco Svc → reco-cache (Redis) → if miss → candidate-gen → ranker (DNN, TF-Serving) → personalised list (TTL 5 m). Pipeline trains nightly + streaming features." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#6A1B9A;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1955" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_E_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#00838F;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="2005" as="sourcePoint" />
+            <mxPoint x="180" y="2005" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_E_text" value="E — Engagement (4 steps): /comment | /like → Engagement Svc → INSERT Comments DB + outbox → Outbox Publisher → produce engagement.events → derive notify.events." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#00838F;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1990" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_V_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#EF6C00;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="2040" as="sourcePoint" />
+            <mxPoint x="180" y="2040" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_V_text" value="V — View Count (6 steps): client beacon (>30 s view) → View Svc → watch.events → Flink View Aggregator (1-min tumbling) → INCR Bigtable + Redis HLL → emit features.stream → feed Trending." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#EF6C00;" vertex="1" parent="1">
+          <mxGeometry x="200" y="2025" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_L_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#4E342E;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="2075" as="sourcePoint" />
+            <mxPoint x="180" y="2075" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend_L_text" value="L — Live Streaming (4 steps): Encoder RTMP/SRT push → Live Ingest (anycast) → Live Transcoder (LL-HLS, 1-s chunks) → Origin TRANSCODED + live.segments → CDN edge serves chunked transfer." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#4E342E;" vertex="1" parent="1">
+          <mxGeometry x="200" y="2060" width="1860" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_S_arrow" style="endArrow=classic;html=1;rounded=0;strokeColor=#455A64;strokeWidth=3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="2065" as="sourcePoint" />
+            <mxPoint x="180" y="2065" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Style legend (right side) -->
+        <mxCell id="style_legend" value="Style Legend&#10;━━━━━━━━━━━━&#10;• Solid arrow  = data path on hot path&#10;• Dashed arrow = control / async / best-effort&#10;• Cylinder      = durable store / Kafka topic / index&#10;• Stacked rect = N-pod stateless service&#10;• Sticky note  = invariants &amp; trade-offs&#10;• Black box    = external system (CDN ISP, Bank, DMCA)&#10;━━━━━━━━━━━━&#10;Color palette (from assets/README.md):&#10;• Blue   — stateless services / dispatchers&#10;• Green  — durable stores / DBs&#10;• Red    — caches / hot tiers / CDN&#10;• Purple — Kafka topics / streaming&#10;• Yellow — coordination / control plane&#10;• Orange — sweepers / safety nets" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2200" y="1820" width="320" height="280" as="geometry" />
+        </mxCell>
+
+        <mxCell id="capacity_note" value="Back-of-envelope (peak):&#10;• 800 M DAU × 30 min/day × ~3 Mbps avg = ~4 EB egress/day&#10;• Concurrent watchers: ~200 M peak&#10;• Uploads: 500 hrs/min = ~30 K hrs/hr · ~10 PB/day raw&#10;• Watch beacons: 800 M × ~5/session = 4 B events/day → ~50 K events/s peak&#10;• Comments: ~100 M/day → ~3 K/s peak&#10;• Recommendation QPS: 800 M × ~5 home loads/day = ~50 K QPS peak&#10;• Search QPS: ~30 K peak&#10;━━━━━━━━━━━━&#10;Storage:&#10;• Hot transcoded: ~PBs · evicted to cold &gt;180 d if &lt; 1 view/day&#10;• Metadata: ~10 B videos × ~2 KB ≈ 20 TB (Spanner)&#10;• Comments: ~10 B comments × ~500 B ≈ 5 TB (Bigtable, sharded)" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="2540" y="1820" width="320" height="280" as="geometry" />
+        </mxCell>
+
+        <!-- ============== AUTHOR / SOURCE FOOTER ============== -->
+        <mxCell id="footer" value="Editable source · diagrams.net (drawio).  Open in Cursor with hediet.vscode-drawio extension.  See companion 06-DesignYouTube.md for box-by-box narrative + Q&amp;A defense." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="500" y="2150" width="2400" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

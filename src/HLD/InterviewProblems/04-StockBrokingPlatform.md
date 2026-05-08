@@ -19,7 +19,7 @@
 5. [The Latency Budget — Order Placement](#5-the-latency-budget--order-placement)
 6. [Why *Not* Just One Big Database / Skip Kafka / Direct Exchange](#6-why-not-just-one-big-database--skip-kafka--direct-exchange)
 7. [Data Model — including full SQL DDL in §7.7](#7-data-model)
-8. [High-Level Architecture (HLD)](#8-high-level-architecture-hld)
+8. [High-Level Architecture (HLD) — incl. §8.6 Cache Invalidation & Global Registry](#8-high-level-architecture-hld)
 9. [Component Deep-Dives](#9-component-deep-dives)
 10. [Order State Machine](#10-order-state-machine)
 11. [End-to-End Flows](#11-end-to-end-flows)
@@ -27,13 +27,14 @@
 13. [Funds, Ledger & Settlement (T+1 / T+2)](#13-funds-ledger--settlement-t1--t2)
 14. [Risk Management (RMS) & Margin](#14-risk-management-rms--margin)
 15. [Edge Cases & Gotchas](#15-edge-cases--gotchas)
+    - 15A. [Consistency Checks, Reconciliation & Repair](#15a-consistency-checks-reconciliation--repair)
 16. [Security, Compliance & Audit (SEBI / SEC)](#16-security-compliance--audit-sebi--sec)
 17. [Observability](#17-observability)
 18. [Technology Choices — Final Verdict](#18-technology-choices--final-verdict)
 19. [Extensions the Interviewer Will Push On](#19-extensions-the-interviewer-will-push-on)
 20. [Interview One-Liner](#20-interview-one-liner)
 21. [Q&A Defense — Top 25 Tough Interview Questions](#21-qa-defense--top-25-tough-interview-questions)
-22. [Concept Glossary — Every Pattern, In Plain English](#22-concept-glossary--every-pattern-in-plain-english)
+22. [Concept Glossary — Every Pattern, In Plain English](#22-concept-glossary--every-pattern-in-plain-english) — incl. §22.9.1–.3 Split-brain prevention vs resolution
 23. [Acronyms & Abbreviations — Cheat-Sheet](#23-acronyms--abbreviations--cheat-sheet)
 
 ---
@@ -1362,6 +1363,64 @@ This layout makes it visually obvious where the **trust boundaries** are (the AP
 
 If you can stand at the whiteboard and trace a finger from the mobile-app box at the top, down through API GW → OMS → RMS → Postgres → outbox → Kafka → ExchangeGW → exchange, then back up via drop-copy → Kafka → OMS / Funds / Portfolio / Notif → WS GW → mobile app, you have narrated **the entire system in 30 seconds** and the interviewer knows you understand it.
 
+### 8.6 Cache Invalidation & The Global Registry
+
+> **Why this section exists.** The system has at least eight distinct caches, several of them safety-critical (a stale `instrument.banned` flag can leak an order onto a banned scrip; a stale `kill_switch` can keep accepting orders for 30 s after compliance has flipped the switch). In a trading system, **caches are correctness-critical, not just performance-critical** — invalidation is a first-class subsystem, not an afterthought TTL. This subsection names the strategy.
+
+#### 8.6.1 The cache inventory — what gets cached, where, and what stale-data costs
+
+| # | Cache | Location | Source-of-truth | What "stale" costs |
+|---|---|---|---|---|
+| 1 | Instrument master (lot size, tick-size, circuit, ban-list) | In-process map in **every OMS pod** (~2 GB) | Postgres `instruments` | OMS accepts an order on a banned scrip → exchange rejects → SLO blown |
+| 2 | LTP / depth-5 | Redis `ltp:{instr}`, `depth:{instr}` | Exchange multicast feed (live) | RMS computes margin on stale price → under-margined order leaks through |
+| 3 | User margin | Redis `margin:{user}` HASH | Postgres `funds` cluster | Over-debit, double-spend, or false rejection |
+| 4 | User position | Redis `pos:{user}` HASH | Postgres `positions` + `trades` | Wrong square-off decision; wrong P&L on the user's screen |
+| 5 | Account permissions (segments, F&O enabled) | Redis HASH (TTL 5 min) | Postgres `accounts` | User trades a segment they were just suspended from |
+| 6 | Feature flags / kill-switches | In-pod cache (TTL 30 s) | etcd | Kill-switch flip propagates in 30 s — at the open, that is *catastrophic* |
+| 7 | JWKS (auth keys) | API GW (TTL 10 min) | Auth Service `/.well-known/jwks.json` | Key rotation can lock users out for up to 10 min |
+| 8 | Idempotency response | Redis `idem:{user}:{key}` (TTL 24 h) | (write-once, no source-of-truth) | Wrong cached response would cause a double-order |
+
+The first two columns make a point the interviewer should hear out loud: **the same cache pattern (Redis HASH) is doing very different jobs** (#3 protects money; #4 drives the screen; #2 absorbs a firehose). They cannot share an invalidation strategy. We need three of them, picked deliberately.
+
+#### 8.6.2 Three invalidation strategies — when to use which
+
+| Strategy | Latency to propagate | Where used | Why |
+|---|---|---|---|
+| **Push: etcd `Watch`** (versioned config + watch channel) | < 100 ms | Feature flags, kill-switches, ban-list, RMS limit overrides | Correctness-critical, low write rate, every pod must react fast. etcd already runs for leader leases — reuse it. |
+| **Push: Postgres `LISTEN/NOTIFY`** (per-table channel) | < 200 ms | Instrument master in OMS pods, fee-schedule version | Source-of-truth is Postgres; we need fan-out to ~200 pods on rare admin updates (a few times/day). NOTIFY is built into Postgres, no extra infra. |
+| **Push: Kafka `cache.invalidate` topic** (single partition, every pod consumes) | < 200 ms | Account permissions, user-level overrides, KYC status | Source-of-truth is OMS/Auth's own DB; we already have Kafka consumers in every pod, so adding one more topic costs nothing. |
+| **Pull: write-through from OMS txn** | 0 (synchronous with the write) | Margin (`margin:{user}`), position (`pos:{user}`) | The writer (OMS) updates Postgres and Redis in the same code path; correctness depends on the write succeeding atomically. (Failure mode handled in §15A.) |
+| **Pull: read-through with single-flight + short TTL** | TTL-bounded (1–10 s) | LTP / depth-5 (sort of — actually push-on-tick) | Used for **non-correctness** caches where stale-by-1-tick is acceptable and we'd rather absorb misses than push every change. |
+
+The **rule of thumb** to state on the whiteboard: *push for correctness, pull for performance.* Anything where stale data could move money or violate compliance gets push-based invalidation. Anything where stale data only annoys the user (a 1-second-old chart) can use TTL-based pull.
+
+#### 8.6.3 Versioned-key pattern (the global registry)
+
+What we *don't* want is a Redis-flavoured `DEL` storm — point-deletes of cached keys after every config change. That is fragile (one missed key and a pod stays poisoned forever) and brittle to refactor.
+
+Instead: **every cacheable entity has a `(key, version)` pair in etcd**. Pods cache `instrument:RELIANCE@v=42`. When admin updates the instrument, a job bumps `etcd: /config/instruments/RELIANCE/version → 43`. Every OMS pod is `Watch`-ing `/config/instruments/`; on the change event, the pod invalidates `instrument:RELIANCE` from its in-process map and lazy-loads `v=43` on next access (or eagerly preloads if hot). The version is also encoded into log lines and metric tags, so a stale pod is observable: `cache_version{entity=instrument, key=RELIANCE} = 42` while the registry says `43`.
+
+```text
+# etcd layout (the "global registry")
+/config/
+├── instruments/{symbol}/version          # bumped by admin tools
+├── feature_flags/{tenant}/{flag}/version
+├── kill_switches/{segment}/version
+└── rms_overrides/{user}/version
+```
+
+The architectural concept: **separate the trigger (version bump) from the data (lazy-loaded from source of truth)**. This avoids putting actual config payloads through etcd (which is not designed for high write volume), keeps Postgres / the source-of-truth authoritative, and gives every pod a single Watch handler instead of N separate notification channels.
+
+#### 8.6.4 What we deliberately *don't* try to do
+
+- **No "global cache coherence protocol"** (MESI-style). The trading-system caches are not write-shared between processes; each cache has a single source of truth and pods are read-only consumers. Coherence overkill = latency cost, no correctness gain.
+- **No cache-aside-with-DEL across the cluster.** Point deletions race with ongoing reads (TOCTOU). Versioned keys don't race — readers either see the old version (and re-load on next access) or the new one; never an inconsistent middle state.
+- **No "rebuild Redis from Postgres on every change".** We *do* run a 60-second sweeper that rebuilds `pos:{user}` and `margin:{user}` from Postgres for divergence repair (§15A.2), but that is a **safety net**, not the propagation mechanism.
+
+#### 8.6.5 The interview one-liner
+
+> *"Caches in a trading system are correctness-critical, not performance-critical. We use **etcd Watch** for kill-switches and ban-lists (sub-100 ms propagation), **Postgres LISTEN/NOTIFY** for instrument master (rare admin writes, fan-out to OMS pods), **write-through** for `margin:{user}` and `pos:{user}` (the OMS owns both writes), and **TTL pull** only for things where staleness annoys but cannot harm — like the 1-second-old chart. Every cacheable entity is keyed `(entity, version)` in a global etcd registry, so a stale pod is observable instead of silent."*
+
 ---
 
 ## 9. Component Deep-Dives
@@ -2067,6 +2126,184 @@ if now() > 15:20 and any(p.product == 'MIS' for p in user.positions):
 
 ---
 
+## 15A. Consistency Checks, Reconciliation & Repair
+
+> **Why this section exists.** A broker has at least **six places where the same logical fact is recorded** — Postgres `orders`, Postgres `order_outbox`, Kafka `orders.events`, Exchange order-entry session, Exchange drop-copy, Redis `pos:`/`margin:` cache, and the clearing-corp's books. The interesting question is not "can these drift?" (yes) but "**how do you detect and repair drift before a regulator notices?**" In a real broker this is an entire team. On the whiteboard it deserves its own first-class subsystem. Treat what follows as a checklist you can defend top-to-bottom.
+
+### 15A.1 The drift map — every pair that can disagree, and what causes it
+
+| # | Source of truth | Replica / cache / downstream | What causes them to drift |
+|---|---|---|---|
+| 1 | Postgres `orders` (per-shard primary) | Kafka `orders.events` | Outbox publisher down, Kafka unavailable, manual intervention |
+| 2 | Postgres `orders` | Exchange (FIX session) | Exchange GW crash between PG commit and FIX send; exchange-side reject not propagated back |
+| 3 | Exchange drop-copy | Postgres `trades` | drop-copy session disconnect during trading hours, message lost in Kafka path |
+| 4 | Postgres `funds_ledger` | Postgres `accounts.balance_after` (cached running balance) | Application bug skipping the balance update on a rare codepath |
+| 5 | Postgres `funds_ledger` | Redis `margin:{user}` | Redis failover; OMS crashed between PG commit and Redis SET |
+| 6 | Postgres `trades` | Postgres `positions` (derived) | Position-projector bug or lag |
+| 7 | Postgres `positions` | Redis `pos:{user}` | Same as #5 |
+| 8 | Our books | Clearing Corp (NSCCL/ICCL) trade file | Trade-busts, last-second exchange amends, fee-schedule mismatch |
+| 9 | Our books | Depository (NSDL/CDSL) DP statement | T+2 settlement timing, corporate-action processing differences |
+
+The single most important thing to say out loud about this table: **only #1, #4, #5, #7 can be auto-repaired**. The rest (#2, #3, #6, #8, #9) require **human approval**, because the resolution might involve booking a trade we didn't know about — and a rogue insertion into `trades` is a SEBI-reportable incident even if it's the right thing to do.
+
+### 15A.2 Continuous (online) checkers — run every 1–5 minutes
+
+These are tiny worker pods (Go / Python), each owning one invariant. They produce a `consistency_break_count{check}` metric; **any non-zero value pages the on-call within 5 minutes**.
+
+#### 15A.2.1 Outbox lag check (#1)
+
+```sql
+SELECT count(*)
+FROM order_outbox
+WHERE status = 'pending'
+  AND created_at_ms < extract(epoch from now()) * 1000 - 30000;  -- 30 s old
+```
+
+- **Threshold:** 0 rows tolerated for > 2 minutes. Above that → page.
+- **Auto-repair:** none needed if the publisher is running — the rows will drain. If the metric is climbing, the alert fires the **publisher health runbook** (restart, check Kafka cluster, check PG WAL lag).
+- **Why this is the single most important continuous check:** every minute that orders sit in `order_outbox` is a minute of orders **not at the exchange**. The user clicked Buy and got a `200 OK` because the row is in Postgres — but no one has told the exchange yet. SLO violation in slow motion.
+
+#### 15A.2.2 Funds ledger invariant (#4)
+
+```sql
+-- Per-user, per-account-type, sum of all journal entries must equal the cached balance.
+SELECT user_id, account_type
+FROM (
+  SELECT user_id, account_type,
+         SUM(amount * CASE WHEN dr_cr='DR' THEN -1 ELSE 1 END) AS computed_balance,
+         (SELECT balance_after FROM accounts a
+          WHERE a.user_id = e.user_id AND a.account_type = e.account_type
+          ORDER BY updated_at DESC LIMIT 1) AS cached_balance
+  FROM funds_ledger_entries e
+  GROUP BY user_id, account_type
+) x
+WHERE computed_balance <> cached_balance;
+```
+
+- **Threshold:** **must return zero rows.** Any row → P0 page, **trading is halted for that user immediately** (kill-switch in §8.6).
+- **Auto-repair:** never. A drift here means either an application bug (the most likely cause), a missed journal entry, or fraud. Compliance + finance both manually investigate before the cached balance is corrected.
+- The DDL-level `CHECK (free_margin_consistent)` (line 604) catches a *related* invariant at write-time inside the txn; this query catches the *historical* invariant across the entire ledger, run periodically.
+
+#### 15A.2.3 Funds double-entry balance (#4 — the global invariant)
+
+```sql
+-- For every transaction id, sum of debits across all legs must equal sum of credits.
+SELECT txn_id
+FROM funds_ledger_entries
+GROUP BY txn_id
+HAVING SUM(CASE WHEN dr_cr='DR' THEN amount ELSE 0 END)
+    <> SUM(CASE WHEN dr_cr='CR' THEN amount ELSE 0 END);
+```
+
+- **Threshold:** zero. Pages on > 0.
+- **Auto-repair:** never. This is the **double-entry contract** (§22.5). If it ever fails, every dollar in the system is suspect until a human signs off.
+
+#### 15A.2.4 Redis-vs-Postgres sweep for `pos:{user}` and `margin:{user}` (#5, #7)
+
+Run a low-priority sweeper once per minute that picks **1 % of active users at random** and recomputes the canonical position/margin from Postgres, then compares to Redis.
+
+```python
+for user_id in random.sample(active_users(), k=int(0.01 * len(active_users))):
+    pg_pos     = postgres.compute_position(user_id)         # SELECT FROM positions
+    redis_pos  = redis.hgetall(f"pos:{user_id}")
+    if pg_pos != redis_pos:
+        metrics.inc("redis_pg_drift", labels={"key": "pos"})
+        if abs_diff(pg_pos, redis_pos) < TOLERANCE:
+            redis.hmset(f"pos:{user_id}", pg_pos)            # auto-repair
+            audit.log("auto_repair", user=user_id, kind="pos", from=redis_pos, to=pg_pos)
+        else:
+            kill_switch.flip(user_id, reason="material_pos_drift")
+            page("redis_pg_drift_material", user_id, pg_pos, redis_pos)
+```
+
+- **Tolerance:** small drift (e.g., 1 share, ₹0.01 in margin) is allowed and silently auto-repaired. Material drift trips the user's kill-switch and pages.
+- **Cost:** sampling 1 % keeps the load low; over an hour we cover ~60 % of active users; the remaining 40 % converge over 2 hours. Acceptable for a non-money invariant.
+
+#### 15A.2.5 Position vs Trades (#6)
+
+```sql
+-- positions.qty must equal sum of (signed) trade qty for that user × instrument since position open
+SELECT user_id, instrument_id
+FROM positions p
+WHERE p.qty <> (
+  SELECT COALESCE(SUM(CASE WHEN side='BUY' THEN qty ELSE -qty END), 0)
+  FROM trades t
+  WHERE t.user_id = p.user_id
+    AND t.instrument_id = p.instrument_id
+    AND t.traded_at >= p.opened_at
+);
+```
+
+- **Threshold:** zero. Pages on > 0.
+- **Auto-repair:** **automatic for intraday positions** — the position projector simply rebuilds from `trades`. **Manual for carry-forward F&O** because the rebuild touches margin liability for tomorrow.
+
+#### 15A.2.6 FIX sequence-gap monitor (covers #2, #3)
+
+The exchange tells us, on every message, the next expected `MsgSeqNum`. A gap means we missed one. The drop-copy gap monitor is the **first signal** that fills are missing from our `trades` table.
+
+- Metric: `fix_session_seqnum_gap{exchange, segment, session_type}` — must be 0.
+- On gap > 0: ExchangeGW issues `ResendRequest (2)`; if the exchange can't fulfil (gap too old), we **stop accepting new orders** on that session and run an emergency drop-copy reconciliation against the exchange's downloadable file.
+
+### 15A.3 End-of-day (offline) reconciliation — the regulatory checkpoint
+
+After close (16:00 IST), before the next trading day opens, three offline jobs run **in sequence**. Each must complete with zero unresolved breaks before the next can start; failure of any blocks the next morning's market-open.
+
+#### 15A.3.1 Trade reconciliation (covers #2, #3, #8)
+
+1. SFTP-fetch the exchange's daily trade file (NSE: `RKW_*.zip`, BSE: equivalent).
+2. Stream-join against our `trades` table on `(exchange_trade_id, exchange)`. Three classes of break:
+   - **In file, not in our DB** (we missed a fill): if the user is one of ours and the order is in our `orders` table, we **insert the trade with a manually-approved repair flag** and re-run the funds debit. Compliance signs off in writing (literally — wet signature, kept for 8 years).
+   - **In our DB, not in file** (we have a phantom fill): much rarer; almost always means exchange amended/busted the trade. Look for a corresponding `TradeBust` message and reverse our entry.
+   - **In both, but mismatched** (price or qty differs): exchange always wins. Reverse our entry, book the exchange's version, recompute funds.
+3. Output: a per-user reconciliation summary that gets written to S3 (Object Lock, 8-year retention) and a JIRA ticket per break for compliance.
+
+#### 15A.3.2 Funds reconciliation (covers #8)
+
+1. Fetch the clearing-corp obligation file (NSCCL settlement obligation report).
+2. Sum our `funds_ledger_entries` for `STT, BROKERAGE, EXCHANGE_FEE, GST, STAMP_DUTY` per user; compare to obligation.
+3. Reconcile with the day's **payin/payout bank-statement** from our nostro/escrow accounts.
+4. Any net-shortfall against clearing corp must be funded **before 11:00 IST T+1** or we get a SEBI fine + brokerage suspension.
+
+#### 15A.3.3 Holdings reconciliation (covers #9)
+
+1. Fetch CDSL/NSDL daily DP statement.
+2. Compare to our `holdings` table.
+3. Two-day lag is normal (T+2 settlement); only break is when settled-trade quantity ≠ holdings delta. Resolution: corporate-action processor adjustment or manual booking.
+
+### 15A.4 Repair worker — the one place writes-outside-the-normal-path live
+
+Auto-repairs (the green-tick cases above) are performed by a single, separate **Repair Worker** service. Concentrating these writes in one place gives:
+
+- **One audit table** (`repair_actions`) — every auto-repair logged with before/after, source check, operator (= "system"), timestamp, and a sign-off chain for any human-approved repair.
+- **One permission boundary** — the Repair Worker is the **only** service besides OMS allowed to UPDATE `orders` (with a special `repair_token` column on the row), the only one besides Funds Service allowed to insert into `funds_ledger_entries` (with `entry_type='REPAIR'`).
+- **One kill-switch** — flipping `repair.enabled = false` halts all auto-repair across the system. Used during SEBI audits ("show me only the trades that came from real exchange messages, not from your repair worker").
+
+The architectural concept: **bend the single-writer rule (§22.15) only here, only with maximum visibility**.
+
+### 15A.5 Continuous-check observability dashboard
+
+A dedicated "Consistency" Grafana dashboard, on the same wall as the trading-floor dashboard, shows:
+
+| Panel | Metric | Health |
+|---|---|---|
+| Outbox lag | `max(outbox_lag_seconds)` per shard | green < 1 s, red ≥ 30 s |
+| Ledger imbalance | `funds_ledger_imbalance_count` | must be 0; red on any value |
+| Cached-balance drift | `accounts_balance_drift_count` | must be 0; red on any value |
+| Redis-vs-PG drift | `redis_pg_drift_count{key}` | green < 0.1 % of users |
+| Position-vs-trades | `position_drift_count` | green = 0; yellow ≤ 5 (intraday auto-repair); red > 5 |
+| FIX seqnum gap | `fix_session_seqnum_gap` per session | must be 0 |
+| Drop-copy lag | `dropcopy_lag_seconds` | green < 2 s, red ≥ 30 s |
+| Repair actions today | `count(repair_actions{auto=true}) [24h]` | informational; spike → investigation |
+| EOD recon status | last-run status of trade / funds / holdings recon | green = clean, red = unresolved breaks |
+
+The single rule: **if any of these is red, market-open is delayed**. There has never been a SEBI complaint about a 5-minute delayed open; there have been many about reconciliation failures.
+
+### 15A.6 The interview one-liner
+
+> *"Six caches and replicas in this system can drift from the source of truth. We run nine continuous invariant checks (every 1–5 min) and three EOD reconciliation jobs (trade, funds, holdings). The funds invariants — `Σ debits = Σ credits` and `cached_balance = SUM(ledger_entries)` — must be zero at all times; any non-zero pages the on-call and trips the user's kill-switch. Auto-repair is allowed only for derivative caches (Redis position/margin, position-from-trades). Anything that touches money requires a human-signed repair action booked through a single Repair Worker service with its own audit table. The whole thing exists because a single un-reconciled trade is a SEBI-reportable incident, regardless of the dollar amount."*
+
+---
+
 ## 16. Security, Compliance & Audit (SEBI / SEC)
 
 ### 16.1 SEBI Cybersecurity Framework essentials
@@ -2525,6 +2762,47 @@ etcd.put('/broking/exchange/nse/eq/leader', pod_id, lease=lease)
 If the active pod dies, the lease expires in ≤ 5 s. A standby is watching the key; on expiry, it tries to acquire the same key with its own lease. Whichever standby wins becomes the new leader. The FIX session sequence number is read from Postgres (not etcd) and the new leader sends `Logon { ResetSeqNumFlag=N }` with that number; the exchange continues the session as if nothing happened.
 
 **Gotcha.** Lease TTL trades availability vs. duplicate-leader risk. TTL=5s means up to 5s of downtime on failover. TTL=1s means more frequent renewal traffic and more sensitivity to network blips that could trigger spurious failovers. 3–5 s is the sweet spot for FIX.
+
+#### 22.9.1 Split-brain prevention vs split-brain resolution — the distinction
+
+> The lease-based pattern above is **prevention**. In a real production system you also need to think about **resolution**: what happens *after* a network partition heals and you have two sides of the system that both took writes? The answer differs per component, and an interviewer who asks "what about split-brain?" is asking for both halves of the story.
+
+| Component | Prevention | Resolution (after partition heals) |
+|---|---|---|
+| **Exchange Gateway** (FIX session) | etcd lease + fencing token. Old leader's writes carry a stale lease ID; downstream rejects. | Old leader **must self-fence**: on losing the lease, immediately stop sending FIX messages and disconnect. On reconnect-as-standby, it reads the FIX seqnum from Postgres (now owned by the new leader) and waits. **No state to merge** because there's only one truth: the exchange's view of the session. (See 22.9.2.) |
+| **Postgres primary per shard** | Patroni + DCS-based leader election (etcd or Consul) + STONITH. | Demoted old primary's diverged WAL is **thrown away** (`pg_rewind`). Any txns that committed locally during the partition window but did not replicate are **lost**. Mitigation: **synchronous replication on the funds shard** (`synchronous_commit = remote_apply`, at least one sync standby) so a commit only succeeds if a replica has it. We accept the ~1–2 ms latency cost on funds because a lost debit is unacceptable. The orders shard runs async replication (preferred latency) and accepts a tiny RPO (recovery-point objective) of ~1 s of orders on a primary failure. |
+| **Kafka consumer group** (e.g., OMS consuming `trades.events`) | Group coordinator + session timeouts + heartbeats. Stop-the-world GC pause on a consumer → coordinator rebalances → next consumer takes over. | The next consumer reads from the **last committed offset**. The original (paused) consumer may wake up and try to commit work it already did — **idempotent consumers** (§22.3) make the duplicate processing safe. Resolution = "at-least-once + dedupe on `event_id`". |
+| **Settlement job leader** | etcd lease, same as ExchangeGW. | If the old leader was mid-batch when the partition began: every settlement step is **idempotent on `txn_id`** (uses `INSERT ... ON CONFLICT DO NOTHING` for ledger writes), so the new leader can safely re-run the batch from the last checkpointed step. If we suspect duplicate work, the EOD ledger imbalance check (§15A.2.3) catches it. |
+| **GTT / Trigger engine** | Stateless workers; idempotency on `trigger_id` (CAS `WHERE status='PENDING'`). | A double-fire from two split workers loses the CAS race for the second worker. Even if both managed to enqueue OMS orders, the OMS dedupes on `client_order_id` (which is deterministically derived from `trigger_id`). End result: at most one order at the exchange per trigger. |
+| **WebSocket Gateway** | No leader; pods are independent; sticky sessions just route consistently. | A pod that came back from a partition with stale subscription state simply forces all its connected users to **re-subscribe** (a broadcast `RESYNC` frame on reconnect). The user pays a 1–2 s glitch; no money state is involved. |
+
+The pattern across the table: **for any stateful singleton (FIX session, settlement leader), prevention is the lease and resolution is "self-fence + read shared state from the canonical store on rejoin." For any stateless multi-writer (Kafka consumers, GTT triggers), prevention is unnecessary and resolution is idempotency.**
+
+#### 22.9.2 The Exchange-Gateway restart playbook (the most-tested split-brain story)
+
+The single most likely real-world split-brain in this system is: ExchangeGW had sent `NewOrderSingle` to the exchange, then crashed (or got partitioned) before receiving the `ExecutionReport`. The standby promotes itself. **What does the new active do?**
+
+The wrong answer (and the most common interview trap) is "resend the order from the outbox." That risks **duplicate fills** at the exchange.
+
+The right playbook, executed at startup of the newly-promoted leader, before consuming any new outbox rows:
+
+1. **Read the FIX session state from Postgres** (`fix_session_state` table — `last_sent_seqnum`, `last_received_seqnum`, last successful `Logon` timestamp).
+2. **`Logon { ResetSeqNumFlag=N, MsgSeqNum=last_sent_seqnum+1 }`** — the exchange replays everything from the last known seqnum, plugging the gap.
+3. **For every order in our DB in state `SENT_TO_EXCHANGE`** (i.e., we sent it but never got a terminal status): issue a FIX **`OrderStatusRequest (H)`**, *not* a resend. The exchange responds with the order's current state — `NEW`, `PARTIALLY_FILLED`, `FILLED`, `REJECTED`, or "unknown" (if the original `NewOrderSingle` never arrived).
+4. **Apply the response:**
+   - "unknown" → safe to resend the original `NewOrderSingle` (the original `ClOrdID` makes the exchange dedupe even if it now arrives twice).
+   - Any other state → update our `orders` row from the exchange's response, do not resend.
+5. **Wait for drop-copy** to catch up to the last `traded_at` timestamp before declaring the gateway "open for new orders" — this guarantees we have the full fill history before producing any new instructions.
+
+The whole playbook takes ~3–5 s for an active gateway with normal trade volume. The **hard rule** is: **never blindly replay the outbox after a crash; always reconcile state with the exchange first**.
+
+#### 22.9.3 The fencing-token detail (why etcd alone isn't sufficient)
+
+A lease tells you "you used to be the leader." It does **not** tell downstream systems "this write came from the current leader." Without a fencing token, a process that paused for 6 seconds (GC), woke up still believing it owns the lease, and immediately wrote to Postgres or sent a FIX message would corrupt state — even though etcd had already given the lease to someone else.
+
+The fix: **etcd's `lease_id` is monotonically increasing across acquisitions.** Every write the active leader performs carries the current `lease_id` as a fencing token (in our case: a `lease_id` column on `fix_session_state` and on `repair_actions`; a header on FIX messages produced via the dedicated outbox path). The recipient of the write checks: `incoming.lease_id >= stored.lease_id`. A stale leader's `lease_id` is smaller than the new leader's, so its write is **rejected at the storage layer**, not just by social contract.
+
+This is the **canonical Martin-Kleppmann fencing-token pattern** (Designing Data-Intensive Applications, ch. 8) and it is the difference between "we *think* we have one writer" and "we *prove* we have one writer."
 
 ### 22.10 WebSocket Sticky Sessions
 

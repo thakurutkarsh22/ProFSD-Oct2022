@@ -3,35 +3,33 @@ package Contest.Dec18;
 import java.util.Scanner;
 
 public class PackingRectangles {
-    public static void main (String[] args) {
-        Scanner scn = new Scanner(System.in);
-        int w = scn.nextInt(); //2
-        int h = scn.nextInt();//3
-        int n = scn.nextInt();//10
+    public static void main(String[] args) {
+        // Your code here
+        Scanner sc = new Scanner(System.in);
+        long w = sc.nextLong();
+        long h = sc.nextLong();
+        long n = sc.nextLong();
+        sc.close();
+        long l = 0, r = 1, mid = 0;
 
-        int left = 1;
-        int right = 1000000000;
-
-        while(left <= right) {
-            int mid = left + (right - left) /2;
-
-            int x = mid / w;
-            int y = mid / h;
-
-
-
-            // condition: (y > 0 && x >= ((n - 1) / y + 1)) || (x > 0 && y >= ((n - 1) / x + 1)) ....
-            if((y > 0 && x >= ((n - 1) / y + 1)) || (x > 0 && y >= ((n - 1) / x + 1))) {
-                // i am able to fit more elements inside the square
-                right = mid - 1;
-            } else {
-                left = mid + 1;
-            }
-
+        // checking for minimum range
+        while (!check(r, w, h, n)) {
+            r *= 2;
         }
 
-        System.out.println(left);
+        while (l + 1 < r) {
+            mid = (r + l) / 2;
+            if (check(mid, w, h, n)) {
+                r = mid;
+            } else {
+                l = mid;
+            }
+        }
+        System.out.println(r);
+    }
 
+    public static boolean check(long k, long w, long h, long n) {
+        return (k / h) * (k / w) >= n;
     }
 
 }

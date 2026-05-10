@@ -7,21 +7,22 @@ public class NumberOfDiagonals {
         Scanner scn = new Scanner(System.in);
         int T = scn.nextInt();
 
-        while(T !=0) {
+        while (T != 0) {
             int N = scn.nextInt();
             int ans = numberOfDiagonal(N);
             System.out.println(ans);
 
             T--;
         }
+        scn.close();
     }
 
-    public static int numberOfDiagonal(int N){
-//Enter your code here
-        if(N <4) {
+    public static int numberOfDiagonal(int N) {
+        // Enter your code here
+        if (N < 4) {
             return 0;
         }
-        int ans = N * (N-3) /2;
+        int ans = N * (N - 3) / 2;
         return ans;
     }
 }
